@@ -1,3 +1,13 @@
+---
+title: FreshTrack AI
+emoji: 🍃
+colorFrom: green
+colorTo: emerald
+sdk: docker
+app_port: 8000
+pinned: false
+---
+
 # FreshTrack AI — Smart Fruit & Vegetable Freshness Assistant 🍃
 
 [![Python](https://img.shields.io/badge/Python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://www.python.org/)

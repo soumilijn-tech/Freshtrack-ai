@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 
 from backend.app.config import (
     APP_NAME,
@@ -33,8 +33,8 @@ app = FastAPI(
     description=APP_DESCRIPTION,
     version=APP_VERSION,
     lifespan=lifespan,
-    docs_url="/api/docs",
-    redoc_url="/api/redoc",
+    docs_url="/docs",
+    redoc_url="/redoc",
 )
 
 # CORS Middleware
@@ -68,6 +68,15 @@ js_dir = FRONTEND_DIR / "js"
 if js_dir.exists():
     app.mount("/js", StaticFiles(directory=str(js_dir)), name="js")
 
+# Swagger / ReDoc Redirects for convenience
+@app.get("/api/docs", include_in_schema=False)
+async def redirect_api_docs():
+    return RedirectResponse(url="/docs")
+
+@app.get("/api/redoc", include_in_schema=False)
+async def redirect_api_redoc():
+    return RedirectResponse(url="/redoc")
+
 # Serve Frontend HTML
 @app.get("/", include_in_schema=False)
 async def serve_index():
@@ -76,13 +85,15 @@ async def serve_index():
         return FileResponse(index_file)
     return JSONResponse({
         "message": "FreshTrack AI API is running. Frontend index.html not yet placed in /frontend.",
-        "docs": "/api/docs"
+        "docs": "/docs"
     })
 
 # Fallback for client-side routing
+RESERVED_PREFIXES = ("api/", "uploads/", "assets/", "css/", "js/", "docs", "redoc", "openapi.json")
+
 @app.get("/{full_path:path}", include_in_schema=False)
 async def catch_all(full_path: str):
-    if full_path.startswith("api/") or full_path.startswith("uploads/"):
+    if any(full_path.startswith(prefix) for prefix in RESERVED_PREFIXES):
         return JSONResponse({"detail": "Not Found"}, status_code=404)
     index_file = FRONTEND_DIR / "index.html"
     if index_file.exists():

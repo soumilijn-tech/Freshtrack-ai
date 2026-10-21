@@ -186,7 +186,7 @@ class VisionModelService:
             scores[item] = score
 
         # Normalize produce probabilities with softmax
-        exp_scores = {k: math.exp(v * 4.0) for k, v in scores.items()}
+        exp_scores = {k: math.exp(v * 5.5) for k, v in scores.items()}
         sum_exp = sum(exp_scores.values())
         produce_probs = {k: v / sum_exp for k, v in exp_scores.items()}
 
