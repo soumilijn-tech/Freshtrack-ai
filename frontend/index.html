@@ -119,6 +119,14 @@
               <img id="result-img" src="" alt="Scanned Produce">
             </div>
 
+            <!-- Low Confidence / Visual Ambiguity Warning Banner -->
+            <div id="result-warning-banner" class="alert-banner" style="display: none; margin-bottom: 1rem;">
+              <div>⚠️</div>
+              <div id="result-warning-text" style="font-size: 0.85rem;">
+                <strong>Low Confidence Prediction:</strong> The AI model detected visual ambiguity. Please verify visually before relying on storage guidance.
+              </div>
+            </div>
+
             <div class="result-header">
               <div>
                 <span id="result-category-badge" class="badge badge-category">Fruit</span>

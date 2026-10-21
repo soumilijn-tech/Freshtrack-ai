@@ -32,5 +32,5 @@ def test_system_status(client):
     data = res.json()
     assert data["status"] == "online"
     assert "ai_mode" in data
-    assert data["ai_mode"] in ("demo_heuristic", "pytorch_trained")
+    assert data["ai_mode"] in ("demo_heuristic", "pytorch_trained", "pretrained_onnx_mobilenet")
     assert "model_notice" in data

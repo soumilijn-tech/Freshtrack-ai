@@ -49,7 +49,7 @@ def spotted_image():
 
 def test_vision_service_initialization():
     service = VisionModelService()
-    assert service.mode in ("demo_heuristic", "pytorch_trained")
+    assert service.mode in ("demo_heuristic", "pytorch_trained", "pretrained_onnx_mobilenet")
     assert service.model_notice != ""
 
 def test_vision_prediction_schema_and_disclaimer(test_image):

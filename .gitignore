@@ -38,10 +38,11 @@ data/*.db
 uploads/*
 !uploads/.gitkeep
 
-# PyTorch weights (large binaries)
+# Large binaries (model weights downloaded at build/runtime)
 *.pth
 *.pt
 *.onnx
+!backend/models/imagenet_classes.txt
 !backend/models/README.md
 
 # OS / Editor

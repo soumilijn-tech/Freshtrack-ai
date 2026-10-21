@@ -2,8 +2,8 @@
 from fastapi import APIRouter
 from backend.app.schemas.api_schemas import DashboardStatsResponse
 from backend.app.services.inventory_service import InventoryService
-from backend.app.services.vision_service import vision_service, TORCH_AVAILABLE
-from backend.app.config import APP_VERSION, APP_NAME, MODEL_PATH
+from backend.app.services.vision_service import vision_service, TORCH_AVAILABLE, ONNX_AVAILABLE
+from backend.app.config import APP_VERSION, APP_NAME, MODEL_PATH, ONNX_MODEL_PATH
 
 router = APIRouter(prefix="/api", tags=["Dashboard & Analytics"])
 
@@ -20,8 +20,9 @@ def get_system_status():
         "version": APP_VERSION,
         "status": "online",
         "pytorch_installed": TORCH_AVAILABLE,
+        "onnx_installed": ONNX_AVAILABLE,
         "ai_mode": vision_service.mode,
-        "model_file_path": MODEL_PATH,
+        "model_file_path": ONNX_MODEL_PATH if vision_service.mode == "pretrained_onnx_mobilenet" else MODEL_PATH,
         "is_custom_model_loaded": vision_service.is_trained_model_active(),
         "model_notice": vision_service.model_notice
     }

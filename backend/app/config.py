@@ -15,6 +15,8 @@ SAMPLE_IMAGES_DIR = FRONTEND_DIR / "assets" / "samples"
 
 DATABASE_PATH = os.getenv("DATABASE_PATH", str(DATA_DIR / "freshtrack.db"))
 MODEL_PATH = os.getenv("MODEL_PATH", str(MODELS_DIR / "freshtrack_model.pth"))
+ONNX_MODEL_PATH = os.getenv("ONNX_MODEL_PATH", str(MODELS_DIR / "mobilenetv2.onnx"))
+IMAGENET_CLASSES_PATH = os.getenv("IMAGENET_CLASSES_PATH", str(MODELS_DIR / "imagenet_classes.txt"))
 
 # Create directories if they do not exist
 DATA_DIR.mkdir(parents=True, exist_ok=True)

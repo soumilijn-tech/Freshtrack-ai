@@ -30,8 +30,9 @@ class ScanResultResponse(BaseModel):
     top_freshness_predictions: List[PredictionItem]
     storage_recommendation: StorageRecommendation
     image_url: str
-    mode: str  # 'demo_heuristic' or 'pytorch_trained'
+    mode: str  # 'demo_heuristic', 'pretrained_onnx_mobilenet', or 'pytorch_trained'
     model_notice: str
+    warning_notice: Optional[str] = None
     safety_disclaimer: str
     is_food_safety_guaranteed: bool = False
     inference_time_ms: float

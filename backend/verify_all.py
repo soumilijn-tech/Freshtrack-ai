@@ -50,7 +50,7 @@ def check_status():
         assert res.status == 200
         data = json.loads(res.read())
         assert data["status"] == "online"
-        assert data["ai_mode"] in ("demo_heuristic", "pytorch_trained")
+        assert data["ai_mode"] in ("demo_heuristic", "pytorch_trained", "pretrained_onnx_mobilenet")
 run_check("System Status API (GET /api/system-status)", check_status)
 
 # 5. Multipart Image Upload Scan

@@ -85,7 +85,11 @@ class FreshTrackApp {
       const statusText = document.getElementById('model-status-text');
       const banner = document.getElementById('demo-mode-banner');
 
-      if (status.ai_mode === 'pytorch_trained' || status.is_custom_model_loaded) {
+      if (status.ai_mode === 'pretrained_onnx_mobilenet') {
+        statusPill.className = 'model-status-pill pytorch';
+        statusText.textContent = 'MobileNetV2 Active';
+        if (banner) banner.style.display = 'none';
+      } else if (status.ai_mode === 'pytorch_trained' || status.is_custom_model_loaded) {
         statusPill.className = 'model-status-pill pytorch';
         statusText.textContent = 'PyTorch Model Active';
         if (banner) banner.style.display = 'none';
@@ -318,6 +322,21 @@ class FreshTrackApp {
     const noticeElem = document.getElementById('result-model-notice');
     if (noticeElem) {
       noticeElem.textContent = result.model_notice;
+    }
+
+    // Low confidence / visual ambiguity warning banner
+    const warningBanner = document.getElementById('result-warning-banner');
+    const warningText = document.getElementById('result-warning-text');
+    if (warningBanner && warningText) {
+      if (result.warning_notice) {
+        warningText.innerHTML = `<strong>Attention:</strong> ${result.warning_notice}`;
+        warningBanner.style.display = 'flex';
+      } else if (result.is_uncertain) {
+        warningText.innerHTML = `<strong>Low Confidence:</strong> Visual ambiguity detected (${result.confidence_pct}% confidence). Please verify visually.`;
+        warningBanner.style.display = 'flex';
+      } else {
+        warningBanner.style.display = 'none';
+      }
     }
 
     resultsContainer.style.display = 'block';
