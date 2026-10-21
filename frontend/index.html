@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>FreshTrack AI — Smart Fruit & Vegetable Freshness Assistant</title>
+  <meta name="description" content="AI-powered fruit & vegetable recognition, freshness estimation, storage advice, and kitchen food-waste tracker.">
+  <link rel="stylesheet" href="/css/styles.css">
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+  <!-- Navigation Bar -->
+  <header class="navbar">
+    <div class="nav-container">
+      <a href="#" class="brand">
+        <div class="brand-icon">🍃</div>
+        <div class="brand-text">
+          <span class="brand-title">FreshTrack AI</span>
+          <span class="brand-subtitle">Smart Freshness & Waste Assistant</span>
+        </div>
+      </a>
+
+      <!-- Desktop Nav -->
+      <nav class="nav-links">
+        <button class="nav-btn active" data-view="scan">
+          <span>📷</span> Scan Produce
+        </button>
+        <button class="nav-btn" data-view="inventory">
+          <span>🥕</span> Inventory
+        </button>
+        <button class="nav-btn" data-view="dashboard">
+          <span>📊</span> Dashboard
+        </button>
+        <button class="nav-btn" data-view="storage">
+          <span>📖</span> Storage Guide
+        </button>
+        <button class="nav-btn" data-view="ai-hub">
+          <span>🧠</span> Colab AI Hub
+        </button>
+      </nav>
+
+      <!-- Live AI Model Status Pill -->
+      <div id="model-status-pill" class="model-status-pill">
+        <span class="status-dot"></span>
+        <span id="model-status-text">Checking AI Mode...</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content Area -->
+  <main class="main-content">
+
+    <!-- View 1: Scan & Inference -->
+    <section id="view-scan" class="view-section active">
+      <!-- Demo Mode Banner Notice -->
+      <div id="demo-mode-banner" class="alert-banner">
+        <div style="font-size: 1.25rem;">ℹ️</div>
+        <div>
+          <strong>Demo Mode Active:</strong> No custom PyTorch weights file was found at <code>backend/models/freshtrack_model.pth</code>.
+          Predictions are currently simulated using computer-vision color & texture heuristics.
+          <a href="#" onclick="document.querySelector('[data-view=ai-hub]').click(); return false;">Open the Colab AI Hub</a> to train and connect your transfer learning model.
+        </div>
+      </div>
+
+      <div class="section-header">
+        <h1 class="section-title">Produce Freshness Scanner</h1>
+        <p class="section-desc">Take a photo or upload an image to identify produce, gauge visible freshness, and receive storage guidance.</p>
+      </div>
+
+      <div class="scanner-grid">
+        <!-- Upload & Camera Controls -->
+        <div class="dropzone-container">
+          <div class="dropzone" id="dropzone">
+            <div class="dropzone-icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+            </div>
+            <div class="dropzone-title">Drop produce photo here</div>
+            <div class="dropzone-sub">or click to browse from device (JPG, PNG, WEBP)</div>
+          </div>
+
+          <input type="file" id="file-input" accept="image/*" style="display: none;">
+          <input type="file" id="camera-input" accept="image/*" capture="environment" style="display: none;">
+
+          <div class="scan-controls">
+            <button class="btn btn-outline" onclick="document.getElementById('camera-input').click()">
+              📱 Mobile Camera
+            </button>
+            <button class="btn btn-outline" id="btn-live-camera">
+              🎥 Live Webcam
+            </button>
+          </div>
+
+          <!-- Quick Sample Testing Bar -->
+          <div class="sample-bar">
+            <div class="sample-title">⚡ Instant Demo Test Samples</div>
+            <div class="sample-buttons" id="sample-buttons-container">
+              <!-- Dynamically populated sample buttons -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Scanning Loading Indicator -->
+        <div id="scan-loading" style="display: none; flex-direction: column; align-items: center; justify-content: center; padding: 3rem; background: var(--bg-card); border-radius: var(--radius-lg); border: 1px solid var(--border);">
+          <div style="font-size: 2.5rem; animation: spin 1s infinite linear;">⚙️</div>
+          <p style="margin-top: 1rem; font-weight: 700; color: var(--text-main);">Analyzing produce features...</p>
+          <p style="font-size: 0.85rem; color: var(--text-muted);">Estimating color dominance, surface texture, and visible decay.</p>
+        </div>
+
+        <!-- Scan Results Card -->
+        <div id="results-section" style="display: none;">
+          <div class="card results-card">
+            <div class="result-image-box">
+              <img id="result-img" src="" alt="Scanned Produce">
+            </div>
+
+            <div class="result-header">
+              <div>
+                <span id="result-category-badge" class="badge badge-category">Fruit</span>
+                <h2 id="result-produce-name" class="result-produce-name">Apple</h2>
+              </div>
+              <span id="result-freshness-badge" class="badge badge-fresh">Fresh</span>
+            </div>
+
+            <!-- Gauges: Confidence & Uncertainty -->
+            <div class="metrics-row">
+              <div class="metric-gauge">
+                <div class="gauge-label">Confidence</div>
+                <div id="result-confidence-val" class="gauge-val">94.2%</div>
+                <div class="gauge-hint">Model softmax score</div>
+              </div>
+              <div class="metric-gauge">
+                <div class="gauge-label">Visual Uncertainty</div>
+                <div id="result-uncertainty-val" class="gauge-val">0.082</div>
+                <div id="result-uncertainty-hint" class="gauge-hint">Calibrated entropy</div>
+              </div>
+            </div>
+
+            <!-- Top Predicted Classes -->
+            <div class="probability-group">
+              <div style="font-size: 0.85rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">
+                Classification Probabilities
+              </div>
+              <div id="top-produce-list">
+                <!-- Top 3 probability bars inserted here -->
+              </div>
+            </div>
+
+            <!-- Storage Recommendation -->
+            <div class="advice-box">
+              <div class="advice-title">
+                <span>🛡️ Recommended Storage:</span>
+                <span id="result-storage-loc" style="font-weight: 800;">Refrigerator</span>
+              </div>
+              <div id="result-ethylene-info" style="font-size: 0.82rem; margin-bottom: 0.5rem; color: #166534;">
+                Ethylene info...
+              </div>
+              <ul class="advice-list" id="result-tips-list">
+                <!-- Tips -->
+              </ul>
+            </div>
+
+            <!-- Food Safety Disclaimer -->
+            <div class="alert-banner danger" style="margin-bottom: 0;">
+              <div>⚠️</div>
+              <div id="result-disclaimer" style="font-size: 0.82rem;">
+                Visual Freshness Estimate Only. Microorganism growth and bacterial pathogens cannot be detected from photos alone.
+              </div>
+            </div>
+
+            <div style="font-size: 0.75rem; color: var(--text-muted); font-style: italic;" id="result-model-notice">
+              <!-- Notice text -->
+            </div>
+
+            <!-- Action: Add to Inventory -->
+            <button class="btn btn-primary" id="btn-save-from-scan">
+              <span>➕</span> Add to Kitchen Inventory
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- View 2: Inventory Management -->
+    <section id="view-inventory" class="view-section">
+      <div class="section-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem;">
+        <div>
+          <h1 class="section-title">Kitchen Inventory</h1>
+          <p class="section-desc">Track purchase dates, remaining shelf life, and mark items consumed before they spoil.</p>
+        </div>
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+          <button class="btn btn-primary" id="btn-add-manual">
+            <span>+</span> Add Item
+          </button>
+          <button class="btn btn-outline" id="btn-export-csv">
+            📥 Export CSV
+          </button>
+          <button class="btn btn-outline" id="btn-export-json">
+            📥 Export JSON
+          </button>
+        </div>
+      </div>
+
+      <!-- Filters & Toolbar -->
+      <div class="inventory-toolbar">
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="inv-search-input" placeholder="Search produce name or notes...">
+        </div>
+
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+          <select id="inv-location-filter" class="form-control" style="width: auto;">
+            <option value="">All Storage Locations</option>
+            <option value="Refrigerator">Refrigerator</option>
+            <option value="Countertop">Countertop</option>
+            <option value="Pantry">Pantry</option>
+          </select>
+
+          <select id="inv-sort-filter" class="form-control" style="width: auto;">
+            <option value="expiry">Sort by: Expiry Date</option>
+            <option value="purchase">Sort by: Purchase Date</option>
+            <option value="name">Sort by: Produce Name</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Filter Pills -->
+      <div class="filter-pills" style="margin-bottom: 1.5rem;">
+        <button class="pill-btn active" data-status="active">Active Items</button>
+        <button class="pill-btn" data-status="all">All Records</button>
+        <button class="pill-btn" data-status="consumed">Consumed (Saved)</button>
+        <button class="pill-btn" data-status="discarded">Discarded (Wasted)</button>
+      </div>
+
+      <!-- Items Grid -->
+      <div class="items-grid" id="inventory-grid">
+        <!-- Rendered dynamically -->
+      </div>
+    </section>
+
+    <!-- View 3: Dashboard & Analytics -->
+    <section id="view-dashboard" class="view-section">
+      <div class="section-header">
+        <h1 class="section-title">Food Waste Analytics</h1>
+        <p class="section-desc">Real-time statistics on consumption habits, waste reduction, and inventory health.</p>
+      </div>
+
+      <!-- KPI Cards -->
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-icon" style="background: #ecfdf5; color: #10b981;">🥗</div>
+          <div>
+            <div class="kpi-val" id="kpi-total-active">0</div>
+            <div class="kpi-label">Active Items in Kitchen</div>
+          </div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-icon" style="background: #fef3c7; color: #f59e0b;">⏳</div>
+          <div>
+            <div class="kpi-val" id="kpi-expiring-soon">0</div>
+            <div class="kpi-label">Expiring Soon (≤ 2 days)</div>
+          </div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-icon" style="background: #ecfdf5; color: #047857;">📈</div>
+          <div>
+            <div class="kpi-val" id="kpi-prevention-rate">92%</div>
+            <div class="kpi-label">Waste Prevention Rate</div>
+          </div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-icon" style="background: #eff6ff; color: #3b82f6;">💵</div>
+          <div>
+            <div class="kpi-val" id="kpi-money-saved">$0.00</div>
+            <div class="kpi-label">Est. Food Value Consumed</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Charts Grid -->
+      <div class="charts-grid">
+        <div class="card chart-card">
+          <div class="chart-title">Freshness Health Distribution</div>
+          <div class="chart-container">
+            <canvas id="chart-freshness"></canvas>
+          </div>
+        </div>
+
+        <div class="card chart-card">
+          <div class="chart-title">Storage Locations Breakdown</div>
+          <div class="chart-container">
+            <canvas id="chart-storage"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent Scans History -->
+      <div class="card">
+        <h2 style="font-size: 1.15rem; font-weight: 700; margin-bottom: 1rem;">Recent Scan Logs</h2>
+        <div style="overflow-x: auto;">
+          <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem; text-align: left;">
+            <thead>
+              <tr style="border-bottom: 2px solid var(--border); color: var(--text-muted);">
+                <th style="padding: 0.75rem;">Produce</th>
+                <th style="padding: 0.75rem;">Detected Freshness</th>
+                <th style="padding: 0.75rem;">Confidence</th>
+                <th style="padding: 0.75rem;">Scanned Time</th>
+              </tr>
+            </thead>
+            <tbody id="recent-scans-list">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- View 4: Produce Storage Encyclopedia -->
+    <section id="view-storage" class="view-section">
+      <div class="section-header">
+        <h1 class="section-title">Produce Storage Encyclopedia</h1>
+        <p class="section-desc">Science-backed preservation guidelines, ethylene gas interactions, and freezing instructions.</p>
+      </div>
+
+      <div class="guide-grid" id="storage-guides-grid">
+        <!-- Rendered dynamically -->
+      </div>
+    </section>
+
+    <!-- View 5: Colab AI Hub -->
+    <section id="view-ai-hub" class="view-section">
+      <div class="section-header">
+        <h1 class="section-title">Transfer Learning AI Hub</h1>
+        <p class="section-desc">CSE-AIML Portfolio Documentation: Model architecture, Colab training pipeline, and weights integration.</p>
+      </div>
+
+      <div class="card" style="margin-bottom: 1.5rem;">
+        <h2 style="font-size: 1.3rem; font-weight: 700; margin-bottom: 0.75rem;">AI System Architecture</h2>
+        <p style="color: var(--text-muted); line-height: 1.6; margin-bottom: 1rem;">
+          FreshTrack AI employs a <strong>Multi-Task Transfer Learning Network</strong> built on a MobileNetV2 backbone pretrained on ImageNet.
+          It features two parallel classification heads:
+        </p>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-bottom: 1.25rem;">
+          <div style="background: var(--bg-subtle); padding: 1.25rem; border-radius: var(--radius-md);">
+            <h3 style="font-size: 1rem; font-weight: 700; margin-bottom: 0.5rem; color: var(--primary-dark);">1. Produce Classification Head</h3>
+            <p style="font-size: 0.85rem; color: var(--text-muted);">
+              Predicts probabilities across 14 fruit and vegetable categories (Apple, Banana, Orange, Tomato, Potato, Carrot, Bell Pepper, Broccoli, Strawberry, Cucumber, Onion, Lettuce, Avocado, Lemon).
+            </p>
+          </div>
+          <div style="background: var(--bg-subtle); padding: 1.25rem; border-radius: var(--radius-md);">
+            <h3 style="font-size: 1rem; font-weight: 700; margin-bottom: 0.5rem; color: var(--primary-dark);">2. Freshness State Head</h3>
+            <p style="font-size: 0.85rem; color: var(--text-muted);">
+              Estimates visual surface condition into 3 distinct categories: <code>Fresh</code>, <code>Fair / Consume Soon</code>, and <code>Overripe / Spoiled</code>.
+            </p>
+          </div>
+        </div>
+
+        <h3 style="font-size: 1.1rem; font-weight: 700; margin-bottom: 0.5rem;">How to Train Your Own Model in Google Colab</h3>
+        <ol style="padding-left: 1.25rem; color: var(--text-muted); line-height: 1.8; font-size: 0.92rem;">
+          <li>Open the training notebook located at: <br><code>notebooks/FreshTrack_AI_Training_TransferLearning.ipynb</code> in <a href="https://colab.research.google.com" target="_blank" style="color: var(--primary-dark); font-weight: 600;">Google Colab</a>.</li>
+          <li>Set the runtime hardware accelerator to <strong>T4 GPU</strong> (<code>Runtime &gt; Change runtime type &gt; T4 GPU</code>).</li>
+          <li>Execute all cells to fine-tune the MobileNetV2 transfer learning weights.</li>
+          <li>Download the exported weights file: <code>freshtrack_model.pth</code>.</li>
+          <li>Place <code>freshtrack_model.pth</code> in your backend directory: <br><code>FreshTrackAI/backend/models/freshtrack_model.pth</code>.</li>
+          <li>Restart your FastAPI server. The app automatically recognizes the file and transitions from <strong>Demo Mode</strong> to <strong>Active PyTorch Model</strong>!</li>
+        </ol>
+      </div>
+
+      <div class="card">
+        <h3 style="font-size: 1.1rem; font-weight: 700; margin-bottom: 0.5rem;">Ethical AI & Food Safety Compliance</h3>
+        <p style="color: var(--text-muted); line-height: 1.6; font-size: 0.9rem;">
+          In accordance with food safety standards, FreshTrack AI communicates the operational boundary of computer vision systems:
+          optical imaging can only estimate external surface characteristics (pigment shifts, spotting, wrinkling).
+          It does not guarantee bacterial sterility or food safety. The interface prominently highlights calibrated uncertainty scores and safety disclaimers on every scan.
+        </p>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Mobile Bottom Navigation Bar -->
+  <nav class="mobile-nav">
+    <button class="mobile-nav-btn active" data-view="scan">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+        <circle cx="12" cy="13" r="4"></circle>
+      </svg>
+      <span>Scan</span>
+    </button>
+    <button class="mobile-nav-btn" data-view="inventory">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path>
+        <line x1="3" y1="6" x2="21" y2="6"></line>
+        <path d="M16 10a4 4 0 0 1-8 0"></path>
+      </svg>
+      <span>Inventory</span>
+    </button>
+    <button class="mobile-nav-btn" data-view="dashboard">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="18" y1="20" x2="18" y2="10"></line>
+        <line x1="12" y1="20" x2="12" y2="4"></line>
+        <line x1="6" y1="20" x2="6" y2="14"></line>
+      </svg>
+      <span>Dashboard</span>
+    </button>
+    <button class="mobile-nav-btn" data-view="storage">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+      </svg>
+      <span>Guide</span>
+    </button>
+    <button class="mobile-nav-btn" data-view="ai-hub">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"></circle>
+        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+      </svg>
+      <span>AI Hub</span>
+    </button>
+  </nav>
+
+  <!-- Modal: Add / Edit Inventory Item -->
+  <div id="inventory-modal" class="modal-backdrop">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 style="font-size: 1.25rem; font-weight: 700;">Add Produce to Inventory</h2>
+        <button class="modal-close" id="btn-close-inv-modal">&times;</button>
+      </div>
+      <form id="inventory-form">
+        <div class="form-group">
+          <label for="produce_name">Produce Name *</label>
+          <input type="text" id="produce_name" name="produce_name" class="form-control" required placeholder="e.g. Banana, Apple, Tomato">
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+          <div class="form-group">
+            <label for="category">Category</label>
+            <select id="category" name="category" class="form-control">
+              <option value="Fruit">Fruit</option>
+              <option value="Vegetable">Vegetable</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="freshness_state">Freshness State</label>
+            <select id="freshness_state" name="freshness_state" class="form-control">
+              <option value="Fresh">Fresh</option>
+              <option value="Fair / Consume Soon">Fair / Consume Soon</option>
+              <option value="Overripe / Spoiled">Overripe / Spoiled</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+          <div class="form-group">
+            <label for="quantity">Quantity *</label>
+            <input type="number" id="quantity" name="quantity" class="form-control" step="0.1" min="0.1" value="1.0" required>
+          </div>
+          <div class="form-group">
+            <label for="unit">Unit</label>
+            <select id="unit" name="unit" class="form-control">
+              <option value="pcs">pieces (pcs)</option>
+              <option value="kg">kilograms (kg)</option>
+              <option value="g">grams (g)</option>
+              <option value="lbs">pounds (lbs)</option>
+              <option value="box">box / bag</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="storage_location">Storage Location</label>
+          <select id="storage_location" name="storage_location" class="form-control">
+            <option value="Refrigerator">Refrigerator</option>
+            <option value="Refrigerator Crisper Drawer">Refrigerator Crisper Drawer</option>
+            <option value="Countertop">Countertop (Room Temperature)</option>
+            <option value="Pantry">Cool Dark Pantry</option>
+          </select>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+          <div class="form-group">
+            <label for="purchase_date">Purchase Date *</label>
+            <input type="date" id="purchase_date" name="purchase_date" class="form-control" required>
+          </div>
+          <div class="form-group">
+            <label for="estimated_expiry_date">Estimated Expiry *</label>
+            <input type="date" id="estimated_expiry_date" name="estimated_expiry_date" class="form-control" required>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="notes">Notes / Observations</label>
+          <textarea id="notes" name="notes" class="form-control" rows="2" placeholder="e.g. Stem wrapped with foil, slightly speckled"></textarea>
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 0.5rem;">
+          Save to Inventory
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Live Webcam Camera -->
+  <div id="camera-modal" class="modal-backdrop">
+    <div class="modal-content" style="max-width: 600px; text-align: center;">
+      <div class="modal-header">
+        <h2 style="font-size: 1.2rem; font-weight: 700;">Live Camera Scanner</h2>
+        <button class="modal-close" id="btn-close-camera">&times;</button>
+      </div>
+      <div style="border-radius: var(--radius-md); overflow: hidden; background: #000; margin-bottom: 1rem; max-height: 380px;">
+        <video id="webcam-video" autoplay playsinline style="width: 100%; height: auto; display: block;"></video>
+      </div>
+      <button class="btn btn-primary" id="btn-snap-photo" style="width: 100%;">
+        📸 Capture &amp; Scan Produce
+      </button>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container"></div>
+
+  <!-- Main JavaScript Module -->
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>
