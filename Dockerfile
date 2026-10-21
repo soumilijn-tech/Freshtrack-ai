@@ -24,6 +24,7 @@ RUN pip install --no-cache-dir -r /app/backend/requirements.txt
 RUN useradd -m -u 1000 user
 
 # Copy source code
+COPY --chown=user:user main.py /app/main.py
 COPY --chown=user:user backend /app/backend
 COPY --chown=user:user frontend /app/frontend
 COPY --chown=user:user notebooks /app/notebooks
@@ -42,4 +43,4 @@ ENV HOME=/home/user \
 EXPOSE 7860
 
 # Run FastAPI via Uvicorn on 0.0.0.0
-CMD ["sh", "-c", "python -m uvicorn backend.app.main:app --host 0.0.0.0 --port ${PORT:-7860}"]
+CMD ["sh", "-c", "python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-7860}"]
