@@ -1,5 +1,5 @@
 # Multi-platform production Dockerfile for FreshTrack AI
-# Compatible with Render, Railway, Hugging Face Spaces, and Fly.io
+# Compatible with Hugging Face Spaces, Render, and Railway
 FROM python:3.11-slim
 
 # Avoid writing .pyc files and buffer stdout/stderr
@@ -20,18 +20,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY backend/requirements.txt /app/backend/requirements.txt
 RUN pip install --no-cache-dir -r /app/backend/requirements.txt
 
+# Create non-root user (Hugging Face Spaces default UID is 1000)
+RUN useradd -m -u 1000 user
+
 # Copy source code
-COPY backend /app/backend
-COPY frontend /app/frontend
-COPY notebooks /app/notebooks
-COPY .env.example /app/.env.example
+COPY --chown=user:user backend /app/backend
+COPY --chown=user:user frontend /app/frontend
+COPY --chown=user:user notebooks /app/notebooks
+COPY --chown=user:user .env.example /app/.env.example
 
-# Create runtime directories
-RUN mkdir -p /app/data /app/uploads /app/backend/models
+# Create runtime directories with appropriate permissions
+RUN mkdir -p /app/data /app/uploads /app/backend/models && chown -R user:user /app
 
-# Expose port (Render/Railway use PORT env var)
-ENV APP_PORT=8000
-EXPOSE 8000
+# Switch to non-root user for Hugging Face security
+USER user
+ENV HOME=/home/user \
+    PATH=/home/user/.local/bin:$PATH \
+    PORT=7860
 
-# Run FastAPI via Uvicorn
-CMD ["sh", "-c", "python -m uvicorn backend.app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Expose standard Hugging Face Spaces port
+EXPOSE 7860
+
+# Run FastAPI via Uvicorn on 0.0.0.0
+CMD ["sh", "-c", "python -m uvicorn backend.app.main:app --host 0.0.0.0 --port ${PORT:-7860}"]

@@ -27,7 +27,7 @@ APP_NAME = "FreshTrack AI"
 APP_DESCRIPTION = "Smart Fruit & Vegetable Freshness Assistant"
 APP_VERSION = "1.0.0"
 APP_HOST = os.getenv("APP_HOST", "0.0.0.0")
-APP_PORT = int(os.getenv("APP_PORT", "8000"))
+APP_PORT = int(os.getenv("PORT", os.getenv("APP_PORT", "8000")))
 DEBUG = os.getenv("DEBUG", "true").lower() in ("true", "1", "yes")
 
 # CORS Origins
