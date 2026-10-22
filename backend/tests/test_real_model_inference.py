@@ -17,6 +17,24 @@ def test_model_is_pretrained_onnx():
     assert "MobileNetV2" in vision_service.model_notice
 
 
+def test_model_unavailable_returns_safe_error():
+    """Verify that if the model is unavailable, predict returns model_status='unavailable' with safe error message."""
+    from backend.app.services.vision_service import VisionModelService
+    service = VisionModelService()
+    service.model_status = "unavailable"
+    service.mode = "model_unavailable"
+    service.model_load_error = "Model weights not found on server."
+
+    green_lemon_sample = SAMPLE_IMAGES_DIR / "green_lemon.jpg"
+    res = service.predict(str(green_lemon_sample))
+    assert res["model_status"] == "unavailable"
+    assert res["produce"] == "Model Unavailable"
+    assert res["is_uncertain"] is True
+    assert "AI Model Unavailable" in res["warning_notice"]
+    assert "password" not in res["warning_notice"].lower()
+    assert "c:\\" not in res["warning_notice"].lower()
+
+
 def test_green_lemon_classified_as_lemon():
     """Verify that a green lemon is classified as Lemon, solving the potato fallback bug."""
     green_lemon_sample = SAMPLE_IMAGES_DIR / "green_lemon.jpg"
@@ -79,7 +97,9 @@ def test_clean_vs_spotted_freshness_difference():
         res_spotted = vision_service.predict(spotted_path)
 
         assert res_clean["freshness"] == "Fresh"
-        assert res_spotted["freshness"] in ("Fair / Consume Soon", "Overripe / Spoiled")
+        assert res_spotted["freshness"] in ("Fair / Consume Soon", "Overripe / Browning Detected", "Overripe / Spoiled")
+        assert res_spotted["freshness_assessment_method"] == "Surface Visual Discoloration Index (Heuristic)"
+        assert "Heuristic" in res_spotted["freshness_method"]
     finally:
         if os.path.exists(clean_path):
             os.remove(clean_path)

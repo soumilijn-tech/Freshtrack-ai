@@ -22,7 +22,11 @@ def get_system_status():
         "pytorch_installed": TORCH_AVAILABLE,
         "onnx_installed": ONNX_AVAILABLE,
         "ai_mode": vision_service.mode,
-        "model_file_path": ONNX_MODEL_PATH if vision_service.mode == "pretrained_onnx_mobilenet" else MODEL_PATH,
+        "model_status": vision_service.model_status,
+        "produce_model": vision_service.produce_model_name,
+        "model_file": vision_service.model_file_display,
         "is_custom_model_loaded": vision_service.is_trained_model_active(),
+        "freshness_assessment_method": "Surface Visual Discoloration Index (Heuristic)",
+        "model_load_error": vision_service.model_load_error,
         "model_notice": vision_service.model_notice
     }

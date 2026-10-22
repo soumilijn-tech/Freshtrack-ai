@@ -32,5 +32,11 @@ def test_system_status(client):
     data = res.json()
     assert data["status"] == "online"
     assert "ai_mode" in data
-    assert data["ai_mode"] in ("demo_heuristic", "pytorch_trained", "pretrained_onnx_mobilenet")
+    assert data["ai_mode"] in ("model_unavailable", "pytorch_trained", "pretrained_onnx_mobilenet")
+    assert "model_status" in data
+    assert data["model_status"] in ("loaded", "unavailable")
+    assert "produce_model" in data
+    assert "freshness_assessment_method" in data
     assert "model_notice" in data
+    # Ensure no absolute file system path is leaked
+    assert "c:\\" not in str(data).lower()

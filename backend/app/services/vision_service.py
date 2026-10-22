@@ -3,7 +3,15 @@
 Provides genuine edge-AI inference using an open-source pretrained MobileNetV2
 ONNX neural network, optimized for low memory footprint (<30MB) and high-speed CPU
 execution on free cloud hosting (Render, Hugging Face Spaces).
-Falls back gracefully to intelligent computer-vision heuristics if weights are missing.
+
+Adheres to strict scientific integrity:
+1. Produce type classification is performed via genuine neural tensor inference.
+2. Softmax probabilities represent model relative score distribution, not ground-truth accuracy.
+3. Surface discoloration is explicitly labeled as a visual surface heuristic,
+   distinct from a validated AI freshness or food-safety classifier.
+4. Model-loading failures are transparently reported (model_status='unavailable')
+   rather than silently presented as successful AI predictions.
+5. No filename-based cheating or artificial score boosts.
 """
 import os
 import math
@@ -42,10 +50,9 @@ except ImportError:
 # Public URL for downloading MobileNetV2 ONNX model if missing
 OFFICIAL_ONNX_MODEL_URL = "https://raw.githubusercontent.com/onnx/models/main/validated/vision/classification/mobilenet/model/mobilenetv2-7.onnx"
 
-# ImageNet Class Index mapping to FreshTrack produce categories
-# Direct ImageNet-1000 synset mappings
+# Direct ImageNet-1000 synset mapping to FreshTrack produce categories
 IMAGENET_PRODUCE_MAP: Dict[int, str] = {
-    # Lemon (ImageNet synset n07749582 covers both yellow lemons & green limes/lemons)
+    # Lemon (synset n07749582 covers both yellow lemons & green lemons/limes)
     951: "Lemon",
     # Apple (Granny Smith n07742313, custard apple n07760859)
     948: "Apple",
@@ -71,13 +78,13 @@ IMAGENET_PRODUCE_MAP: Dict[int, str] = {
     # Potato (mashed potato n07711569, sweet potato n03840681)
     935: "Potato",
     684: "Potato",
-    # Squashes (sometimes close to pumpkin/potato/cucumber)
+    # Squashes / Tubers related to potato / cucumber / avocado
     940: "Cucumber",
     941: "Avocado",
     942: "Potato",
     # Tomato wild relatives / nightshades (hip/rosehip n07873807)
     989: "Tomato",
-    # Fig (often shares shape/texture with avocado)
+    # Fig (shares dark pear shape/texture with avocado)
     952: "Avocado",
     # Pineapple (n07753275)
     953: "Banana",
@@ -87,11 +94,15 @@ IMAGENET_PRODUCE_MAP: Dict[int, str] = {
 
 
 class VisionModelService:
-    """Service for classifying produce type and estimating visible freshness."""
+    """Service for classifying produce type and estimating visible surface quality."""
 
     def __init__(self):
-        self.mode = "demo_heuristic"
+        self.model_status = "unavailable"
+        self.mode = "model_unavailable"
+        self.produce_model_name = "Unavailable"
+        self.model_file_display = "None"
         self.model_notice = ""
+        self.model_load_error: Optional[str] = None
         self.onnx_session = None
         self.onnx_input_name = None
         self.pytorch_model = None
@@ -114,10 +125,10 @@ class VisionModelService:
                 print(f"[FreshTrack AI] Note: Could not read imagenet classes file: {e}")
 
     def _initialize_model(self):
-        """Initialize the best available model runtime: ONNX Pretrained -> PyTorch -> Heuristics."""
+        """Initialize the best available model runtime: ONNX Pretrained -> PyTorch -> Error."""
         onnx_file = Path(ONNX_MODEL_PATH)
 
-        # 1. Check / Download ONNX Model
+        # 1. Attempt loading ONNX Model
         if ONNX_AVAILABLE:
             if not onnx_file.exists():
                 print(f"[FreshTrack AI] ONNX model not found at {onnx_file}. Checking automatic download...")
@@ -125,7 +136,6 @@ class VisionModelService:
 
             if onnx_file.exists() and onnx_file.stat().st_size > 1024 * 1024:
                 try:
-                    # Configure lightweight single-thread CPU execution for low memory
                     opts = ort.SessionOptions()
                     opts.intra_op_num_threads = 1
                     opts.inter_op_num_threads = 1
@@ -138,15 +148,23 @@ class VisionModelService:
                         providers=["CPUExecutionProvider"]
                     )
                     self.onnx_input_name = self.onnx_session.get_inputs()[0].name
+                    self.model_status = "loaded"
                     self.mode = "pretrained_onnx_mobilenet"
+                    self.produce_model_name = "MobileNetV2 (ONNX)"
+                    self.model_file_display = "models/mobilenetv2.onnx"
+                    self.model_load_error = None
                     self.model_notice = (
                         "Active Model: MobileNetV2 (Pretrained ONNX neural network). "
-                        "Genuine open-source computer vision running with lightweight CPU memory (<30MB)."
+                        "Genuine open-source computer vision running on CPU (<30MB RAM)."
                     )
                     print(f"[FreshTrack AI] {self.model_notice}")
                     return
                 except Exception as e:
-                    print(f"[FreshTrack AI] Warning: Failed to load ONNX model ({e}). Checking PyTorch fallback.")
+                    # Sanitize error to prevent leaking sensitive server paths
+                    self.model_load_error = f"ONNX Runtime initialization error: {type(e).__name__}"
+                    self.produce_model_name = "Unavailable"
+                    self.model_file_display = "None"
+                    print(f"[FreshTrack AI] Warning: Failed to load ONNX model ({e}).")
 
         # 2. Check Custom PyTorch Model
         torch_file = Path(MODEL_PATH)
@@ -154,7 +172,11 @@ class VisionModelService:
             try:
                 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
                 self.pytorch_model = torch.load(str(torch_file), map_location=device)
+                self.model_status = "loaded"
                 self.mode = "pytorch_trained"
+                self.produce_model_name = "PyTorch Dual-Head Transfer Learning"
+                self.model_file_display = "models/freshtrack_model.pth"
+                self.model_load_error = None
                 self.model_notice = (
                     f"Active PyTorch Transfer Learning Model loaded from {torch_file.name} "
                     f"running on {device.type.upper()}."
@@ -162,13 +184,21 @@ class VisionModelService:
                 print(f"[FreshTrack AI] {self.model_notice}")
                 return
             except Exception as e:
+                self.model_load_error = f"PyTorch weights load error: {type(e).__name__}"
+                self.produce_model_name = "Unavailable"
+                self.model_file_display = "None"
                 print(f"[FreshTrack AI] Failed to load PyTorch weights ({e}).")
 
-        # 3. Fallback to Demo Heuristics
-        self.mode = "demo_heuristic"
+        # 3. Model Unavailable: No silent demo fallback
+        self.model_status = "unavailable"
+        self.mode = "model_unavailable"
+        self.produce_model_name = "Unavailable"
+        self.model_file_display = "None"
+        if not self.model_load_error:
+            self.model_load_error = "Model weights file not found on server."
         self.model_notice = (
-            "DEMO MODE: Model weights not found or runtime unavailable. "
-            "Showing simulated predictions using computer-vision color & texture heuristics."
+            f"AI Model Unavailable: {self.model_load_error}. "
+            "Please check deployment configuration or model asset availability."
         )
         print(f"[FreshTrack AI] {self.model_notice}")
 
@@ -185,13 +215,13 @@ class VisionModelService:
                 out_file.write(resp.read())
             print(f"[FreshTrack AI] Successfully downloaded MobileNetV2 ONNX model.")
         except Exception as e:
-            print(f"[FreshTrack AI] Note: Could not auto-download model weights ({e}). Operating in fallback mode.")
+            print(f"[FreshTrack AI] Note: Could not auto-download model weights ({e}).")
             if dest_path.exists() and dest_path.stat().st_size < 1024:
                 dest_path.unlink()
 
     def is_trained_model_active(self) -> bool:
-        """Return True if a genuine neural network model is active (ONNX or PyTorch)."""
-        return self.mode in ("pretrained_onnx_mobilenet", "pytorch_trained")
+        """Return True only if a genuine neural network model is loaded and ready."""
+        return self.model_status == "loaded" and self.mode in ("pretrained_onnx_mobilenet", "pytorch_trained")
 
     def predict(self, image_path: str) -> Dict[str, Any]:
         """Run classification and freshness estimation on an image."""
@@ -204,37 +234,73 @@ class VisionModelService:
         except Exception as e:
             raise ValueError(f"Invalid image file: {str(e)}")
 
-        warning_notice = None
+        elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)
 
+        # Honest check: if model is not loaded, do not fake predictions
+        if self.model_status != "loaded":
+            return {
+                "produce": "Model Unavailable",
+                "category": "N/A",
+                "freshness": "Unknown",
+                "confidence": 0.0,
+                "confidence_pct": 0.0,
+                "produce_model": self.produce_model_name,
+                "produce_confidence": 0.0,
+                "uncertainty_score": 1.0,
+                "is_uncertain": True,
+                "warning_notice": (
+                    f"⚠️ AI Model Unavailable: {self.model_load_error or 'Weights not loaded'}. "
+                    "Genuine AI inference cannot be performed until the model is available."
+                ),
+                "model_status": "unavailable",
+                "top_produce_predictions": [],
+                "top_freshness_predictions": [],
+                "storage_recommendation": StorageAdvisor.get_recommendation("Unknown", "Fresh"),
+                "mode": self.mode,
+                "model_notice": self.model_notice,
+                "freshness_assessment_method": "Surface Visual Discoloration Index (Heuristic)",
+                "freshness_method": "Surface Visual Discoloration Index (Heuristic)",
+                "freshness_notes": "Freshness analysis unavailable because the vision model is offline.",
+                "safety_disclaimer": (
+                    "⚠️ Optical Inspection Limitation: Visual analysis cannot evaluate food safety, bacterial "
+                    "contamination (e.g. Salmonella, E. coli), internal rot, or sour odors. Always inspect "
+                    "tactile firmness and smell before preparation or consumption."
+                ),
+                "is_food_safety_guaranteed": False,
+                "inference_time_ms": elapsed_ms,
+            }
+
+        # Run genuine neural inference (No filename cheating; purely based on image pixels)
         if self.mode == "pretrained_onnx_mobilenet" and self.onnx_session is not None:
-            # Genuine MobileNetV2 ONNX neural inference
-            produce, p_conf, top_produce, freshness, f_conf, top_freshness, raw_top = self._infer_onnx(img_rgb, image_path)
+            produce, p_conf, top_produce, raw_top = self._infer_onnx(img_rgb)
         elif self.mode == "pytorch_trained" and self.pytorch_model is not None:
-            # Custom PyTorch model inference
-            produce, p_conf, top_produce, freshness, f_conf, top_freshness = self._infer_pytorch(img_rgb)
-            raw_top = []
+            produce, p_conf, top_produce = self._infer_pytorch(img_rgb)
         else:
-            # Computer-vision heuristic fallback
-            produce, p_conf, top_produce, freshness, f_conf, top_freshness = self._infer_heuristic(img_rgb, image_path)
-            raw_top = []
+            raise RuntimeError("Inference session unexpectedly unavailable.")
+
+        # Surface visual quality assessment (honest heuristic browning metric, NOT an AI food-safety classifier)
+        freshness, browning_ratio, freshness_notes = self._assess_surface_quality(img_rgb, produce)
 
         elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)
 
-        # Calculate uncertainty score using normalized entropy
+        # Calculate uncertainty score using normalized Shannon entropy
         uncertainty_score, is_uncertain = self._calculate_uncertainty(top_produce, p_conf)
 
-        # Requirement 5: Low confidence or ambiguity warning
-        if p_conf < 0.40 or is_uncertain:
+        warning_notice = None
+
+        # Requirement 2: If top class probability is below 35%, return produce="Unknown / Ambiguous" and is_uncertain=true
+        if p_conf < 0.35:
+            produce = "Unknown / Ambiguous"
             is_uncertain = True
             warning_notice = (
-                "⚠️ Low Confidence Prediction: The AI model detected visual ambiguity. "
-                "Please ensure the produce item is clearly centered under adequate lighting."
+                f"⚠️ Warning: Low Confidence Prediction ({round(p_conf * 100, 1)}%): Top class probability "
+                "is below the 35% uncertainty threshold. Softmax probability reflects the model's relative score distribution, "
+                "not a guarantee of correctness. Please ensure the produce is clearly centered with good lighting."
             )
-
-        if self.mode == "demo_heuristic":
+        elif is_uncertain:
             warning_notice = (
-                "⚠️ Demo Mode Active: Pretrained neural model weights were not detected. "
-                "Predictions are generated via computer-vision color heuristics."
+                f"⚠️ Warning: High Uncertainty ({round(p_conf * 100, 1)}% confidence): The prediction exhibits visual ambiguity. "
+                "Note: Softmax probability reflects the model's relative score distribution, not guaranteed accuracy."
             )
 
         # Look up storage guidance
@@ -250,14 +316,23 @@ class VisionModelService:
             "freshness": freshness,
             "confidence": round(p_conf, 4),
             "confidence_pct": round(p_conf * 100, 1),
+            "produce_model": self.produce_model_name,
+            "produce_confidence": round(p_conf, 4),
             "uncertainty_score": round(uncertainty_score, 3),
             "is_uncertain": is_uncertain,
             "warning_notice": warning_notice,
+            "model_status": "loaded",
             "top_produce_predictions": top_produce,
-            "top_freshness_predictions": top_freshness,
+            "top_freshness_predictions": [
+                {"label": "Surface Visual Discoloration Index", "probability": round(browning_ratio, 3), "percentage": round(browning_ratio * 100, 1)},
+                {"label": f"Observable Clean Skin Area ({freshness})", "probability": round(1.0 - browning_ratio, 3), "percentage": round((1.0 - browning_ratio) * 100, 1)},
+            ],
             "storage_recommendation": storage_info,
             "mode": self.mode,
             "model_notice": self.model_notice,
+            "freshness_assessment_method": "Surface Visual Discoloration Index (Heuristic)",
+            "freshness_method": "Surface Visual Discoloration Index (Heuristic)",
+            "freshness_notes": freshness_notes,
             "safety_disclaimer": (
                 "⚠️ Visual Freshness Estimate Only. Microorganism growth, pathogenic bacteria "
                 "(such as Salmonella or E. coli), internal rotting, and sour odors cannot be "
@@ -282,8 +357,8 @@ class VisionModelService:
         arr = arr.transpose(2, 0, 1)
         return np.expand_dims(arr, axis=0)
 
-    def _infer_onnx(self, img: Image.Image, image_path: str = None) -> Tuple[str, float, List[Dict[str, Any]], str, float, List[Dict[str, Any]], List[Dict[str, Any]]]:
-        """Run MobileNetV2 ONNX neural inference and map to produce taxonomy with visual calibration."""
+    def _infer_onnx(self, img: Image.Image) -> Tuple[str, float, List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """Run genuine MobileNetV2 ONNX neural inference without filename cheating or hardcoded RGB additions."""
         inp_tensor = self._preprocess_onnx(img)
         outputs = self.onnx_session.run(None, {self.onnx_input_name: inp_tensor})
         raw_logits = outputs[0][0]
@@ -292,7 +367,7 @@ class VisionModelService:
         exp_logits = np.exp(raw_logits - np.max(raw_logits))
         imagenet_probs = exp_logits / np.sum(exp_logits)
 
-        # Extract top raw ImageNet predictions for debugging & inspection
+        # Extract top raw ImageNet predictions for transparency
         top_indices = imagenet_probs.argsort()[-5:][::-1]
         raw_top = [
             {
@@ -303,255 +378,85 @@ class VisionModelService:
             for idx in top_indices
         ]
 
-        # Extract foreground visual features for cross-calibration
+        # Map genuine ImageNet activations directly to produce classes
+        raw_produce_probs: Dict[str, float] = {item: 0.0 for item in SUPPORTED_PRODUCE}
+
+        for idx, mapped_produce in IMAGENET_PRODUCE_MAP.items():
+            raw_produce_probs[mapped_produce] += float(imagenet_probs[idx])
+
+        total_produce_mass = sum(raw_produce_probs.values())
+
+        if total_produce_mass < 0.05:
+            # Low overall food signal (e.g. non-produce object or ambiguous noise)
+            sorted_raw = sorted(raw_produce_probs.items(), key=lambda x: x[1], reverse=True)
+            top_produce = [
+                {"label": name, "probability": round(prob, 4), "percentage": round(prob * 100, 1)}
+                for name, prob in sorted_raw[:3]
+            ]
+            return "Unknown / Ambiguous", round(total_produce_mass, 4), top_produce, raw_top
+
+        # Normalize relative probabilities among candidate produce classes
+        candidate_probs = {k: v / total_produce_mass for k, v in raw_produce_probs.items()}
+        sorted_produce = sorted(candidate_probs.items(), key=lambda x: x[1], reverse=True)
+        top_produce = [
+            {"label": name, "probability": round(prob, 4), "percentage": round(prob * 100, 1)}
+            for name, prob in sorted_produce[:3]
+        ]
+        best_produce = top_produce[0]["label"]
+        produce_conf = top_produce[0]["probability"]
+
+        return best_produce, produce_conf, top_produce, raw_top
+
+    def _assess_surface_quality(
+        self, img: Image.Image, produce: str
+    ) -> Tuple[str, float, str]:
+        """Honest visual surface browning and spot analysis (explicitly labeled as a heuristic)."""
         img_small = img.resize((128, 128))
         arr = np.array(img_small, dtype=np.float32) / 255.0
-        # Background filtering (ignore bright white/neutral studio backdrop)
+        # Background segmentation: filter near-white or neutral background
         non_bg = ~((arr[:, :, 0] > 0.92) & (arr[:, :, 1] > 0.92) & (arr[:, :, 2] > 0.92))
         fg = arr[non_bg] if np.sum(non_bg) > 100 else arr.reshape(-1, 3)
 
-        mean_r = float(np.mean(fg[:, 0]))
-        mean_g = float(np.mean(fg[:, 1]))
-        mean_b = float(np.mean(fg[:, 2]))
         gray = 0.2989 * fg[:, 0] + 0.5870 * fg[:, 1] + 0.1140 * fg[:, 2]
 
-        # Color profiles
-        is_red = (mean_r > mean_g * 1.35) and (mean_r > mean_b * 1.35)
-        is_green = (mean_g > mean_r * 1.05) and (mean_g > mean_b * 1.05)
-        is_yellow = (mean_r > 0.55) and (mean_g > 0.50) and (mean_b < 0.45)
-        is_orange = (mean_r > 0.60) and (0.35 <= mean_g <= 0.65) and (mean_b < 0.35)
-        is_earthy_brown = (0.30 <= mean_r <= 0.65) and (0.25 <= mean_g <= 0.55) and (mean_b < 0.40) and abs(mean_r - mean_g) < 0.15
-
-        # Spot & rot metrics
+        # Surface defect metric: moderate R/G ratio with low lightness (browning/necrosis)
         brownish_spots = float(np.sum((fg[:, 0] > fg[:, 1]) & (fg[:, 0] < fg[:, 1] * 1.8) & (gray < 0.35)) / len(gray))
         dark_pixels = float(np.sum(gray < 0.18) / len(gray))
+        browning_ratio = max(brownish_spots, dark_pixels)
 
-        # Check filename hint if available
-        fname_lower = Path(image_path).name.lower() if image_path else ""
-
-        # Compute produce affinities from ImageNet predictions
-        produce_scores: Dict[str, float] = {item: 0.01 for item in SUPPORTED_PRODUCE}
-
-        # 1. Neural weights from ImageNet mappings
-        for idx, mapped_produce in IMAGENET_PRODUCE_MAP.items():
-            prob = float(imagenet_probs[idx])
-            if prob > 0.005:
-                # Add neural signal
-                produce_scores[mapped_produce] += prob * 4.0
-
-        # Special direct ImageNet anchor boost
-        # Index 951 is Lemon (covers yellow lemons AND green lemons/limes)
-        lemon_prob = float(imagenet_probs[951])
-        if lemon_prob > 0.08:
-            produce_scores["Lemon"] += lemon_prob * 6.0
-
-        # Index 948 is Granny Smith (green apple), 956 is custard apple
-        apple_prob = float(imagenet_probs[948]) + float(imagenet_probs[956])
-        if apple_prob > 0.08:
-            produce_scores["Apple"] += apple_prob * 5.0
-
-        # Index 954 is Banana
-        banana_prob = float(imagenet_probs[954])
-        if banana_prob > 0.08:
-            produce_scores["Banana"] += banana_prob * 5.0
-
-        # Index 950 is Orange
-        orange_prob = float(imagenet_probs[950])
-        if orange_prob > 0.08:
-            produce_scores["Orange"] += orange_prob * 5.0
-
-        # Index 945 is Bell Pepper
-        pepper_prob = float(imagenet_probs[945])
-        if pepper_prob > 0.08:
-            produce_scores["Bell Pepper"] += pepper_prob * 5.0
-
-        # Index 943 is Cucumber, 939 is Zucchini
-        cuke_prob = float(imagenet_probs[943]) + float(imagenet_probs[939])
-        if cuke_prob > 0.08:
-            produce_scores["Cucumber"] += cuke_prob * 5.0
-
-        # Index 937 is Broccoli
-        broc_prob = float(imagenet_probs[937]) + float(imagenet_probs[938])
-        if broc_prob > 0.08:
-            produce_scores["Broccoli"] += broc_prob * 5.0
-
-        # Index 949 is Strawberry
-        straw_prob = float(imagenet_probs[949])
-        if straw_prob > 0.08:
-            produce_scores["Strawberry"] += straw_prob * 5.0
-
-        # Index 936 is Head Cabbage / Lettuce
-        cabbage_prob = float(imagenet_probs[936])
-        if cabbage_prob > 0.08:
-            produce_scores["Lettuce"] += cabbage_prob * 5.0
-
-        # Index 935 is Mashed Potato, 942 is Butternut squash
-        potato_prob = float(imagenet_probs[935]) + float(imagenet_probs[684])
-        if potato_prob > 0.08:
-            produce_scores["Potato"] += potato_prob * 5.0
-
-        # 2. Visual feature calibration
-        # For Lemon: can be green (lime / unripe lemon) OR bright yellow
-        if lemon_prob > 0.15:
-            if is_green or is_yellow:
-                produce_scores["Lemon"] += 1.5
-
-        # For Apple: red, green, or yellow-red
-        if is_red:
-            produce_scores["Apple"] += 0.8
-            produce_scores["Tomato"] += 0.9
-            produce_scores["Strawberry"] += 0.4
-        elif is_orange:
-            produce_scores["Carrot"] += 1.2
-            produce_scores["Orange"] += 0.8
-        elif is_yellow:
-            produce_scores["Banana"] += 0.9
-            produce_scores["Lemon"] += 0.7
-        elif is_green:
-            produce_scores["Cucumber"] += 0.7
-            produce_scores["Broccoli"] += 0.7
-            produce_scores["Lettuce"] += 0.6
-            produce_scores["Avocado"] += 0.5
-            # Green lemon / lime consistency bonus
-            if lemon_prob > 0.05:
-                produce_scores["Lemon"] += 1.0
-        elif is_earthy_brown:
-            produce_scores["Potato"] += 1.2
-            produce_scores["Onion"] += 0.8
-
-        # 3. Filename hint context bonus (for sample images / labeled inputs)
-        if fname_lower:
-            for item in SUPPORTED_PRODUCE:
-                if item.lower() in fname_lower:
-                    produce_scores[item] += 1.0
-
-        # Softmax over produce classes
-        exp_p = {k: math.exp(min(v * 3.5, 50.0)) for k, v in produce_scores.items()}
-        sum_exp = sum(exp_p.values())
-        produce_probs = {k: v / sum_exp for k, v in exp_p.items()}
-
-        sorted_produce = sorted(produce_probs.items(), key=lambda x: x[1], reverse=True)
-        top_produce = [
-            {"label": name, "probability": round(prob, 4), "percentage": round(prob * 100, 1)}
-            for name, prob in sorted_produce[:3]
-        ]
-        best_produce = top_produce[0]["label"]
-        produce_conf = top_produce[0]["probability"]
-
-        # 4. Freshness estimation
-        best_freshness, freshness_conf, top_freshness = self._estimate_freshness(
-            best_produce, brownish_spots, dark_pixels
-        )
-
-        return best_produce, produce_conf, top_produce, best_freshness, freshness_conf, top_freshness, raw_top
-
-    def _estimate_freshness(
-        self, produce: str, brownish_spots: float, dark_pixels: float
-    ) -> Tuple[str, float, List[Dict[str, Any]]]:
-        """Estimate freshness state based on surface spot density, necrotic discoloration, and texture."""
-        # For bananas: freckling / sugar spots are natural ripening indicators
+        # Freshness rating based on observable discoloration
         if produce == "Banana":
-            if brownish_spots > 0.12 or dark_pixels > 0.20:
-                freshness_probs = {"Fresh": 0.05, "Fair / Consume Soon": 0.25, "Overripe / Spoiled": 0.70}
-            elif brownish_spots > 0.02 or dark_pixels > 0.05:
-                freshness_probs = {"Fresh": 0.12, "Fair / Consume Soon": 0.78, "Overripe / Spoiled": 0.10}
+            # For bananas, freckling indicates sugar ripening
+            if browning_ratio > 0.18:
+                state = "Overripe / Browning Detected"
+            elif browning_ratio > 0.03:
+                state = "Fair / Consume Soon"
             else:
-                freshness_probs = {"Fresh": 0.88, "Fair / Consume Soon": 0.10, "Overripe / Spoiled": 0.02}
+                state = "Fresh"
         else:
-            # General produce
-            if brownish_spots > 0.10 or dark_pixels > 0.16:
-                freshness_probs = {"Fresh": 0.06, "Fair / Consume Soon": 0.28, "Overripe / Spoiled": 0.66}
-            elif brownish_spots > 0.03 or dark_pixels > 0.07:
-                freshness_probs = {"Fresh": 0.20, "Fair / Consume Soon": 0.68, "Overripe / Spoiled": 0.12}
+            if browning_ratio > 0.12:
+                state = "Overripe / Browning Detected"
+            elif browning_ratio > 0.04:
+                state = "Fair / Consume Soon"
             else:
-                freshness_probs = {"Fresh": 0.91, "Fair / Consume Soon": 0.07, "Overripe / Spoiled": 0.02}
+                state = "Fresh"
 
-        sorted_freshness = sorted(freshness_probs.items(), key=lambda x: x[1], reverse=True)
-        top_freshness = [
-            {"label": state, "probability": round(p, 4), "percentage": round(p * 100, 1)}
-            for state, p in sorted_freshness
-        ]
-        best_freshness = top_freshness[0]["label"]
-        freshness_conf = top_freshness[0]["probability"]
-
-        return best_freshness, freshness_conf, top_freshness
-
-    def _infer_heuristic(
-        self, img: Image.Image, image_path: str = None
-    ) -> Tuple[str, float, List[Dict[str, Any]], str, float, List[Dict[str, Any]]]:
-        """Intelligent color and texture heuristic analysis for Demo Mode."""
-        img_small = img.resize((128, 128))
-        arr = np.array(img_small, dtype=np.float32) / 255.0
-        non_bg = ~((arr[:, :, 0] > 0.90) & (arr[:, :, 1] > 0.90) & (arr[:, :, 2] > 0.90))
-        fg = arr[non_bg] if np.sum(non_bg) > 100 else arr.reshape(-1, 3)
-
-        r = float(np.mean(fg[:, 0]))
-        g = float(np.mean(fg[:, 1]))
-        b = float(np.mean(fg[:, 2]))
-        gray = 0.2989 * fg[:, 0] + 0.5870 * fg[:, 1] + 0.1140 * fg[:, 2]
-
-        is_yellow = (r > 0.65) and (g > 0.60) and (b < 0.45)
-        is_orange = (r > 0.70) and (0.42 <= g <= 0.70) and (b < 0.38)
-        is_red = (r > g * 1.6) and (r > b * 1.6) and not is_orange
-        is_green = (g > r * 1.1) and (g > b * 1.1)
-
-        brownish_spots = float(np.sum((fg[:, 0] > fg[:, 1]) & (fg[:, 0] < fg[:, 1] * 1.8) & (gray < 0.35)) / len(gray))
-        dark_pixels = float(np.sum(gray < 0.18) / len(gray))
-
-        fname_lower = Path(image_path).name.lower() if image_path else ""
-
-        scores = {}
-        for item in SUPPORTED_PRODUCE:
-            score = 0.02
-            if is_red:
-                if item == "Apple": score += 0.85
-                elif item == "Tomato": score += 0.75
-                elif item == "Strawberry": score += 0.30
-            elif is_yellow:
-                if item == "Banana": score += 0.95
-                elif item == "Lemon": score += 0.50
-            elif is_orange:
-                if item == "Carrot": score += 0.95
-                elif item == "Orange": score += 0.50
-            elif is_green:
-                if item in ["Broccoli", "Cucumber", "Lettuce"]: score += 0.75
-                elif item == "Avocado": score += 0.50
-                elif item == "Lemon": score += 0.60  # Green lemon / lime fix in heuristic
-            else:
-                if item in ["Potato", "Onion"]: score += 0.60
-
-            if fname_lower and item.lower() in fname_lower:
-                score += 0.40
-
-            scores[item] = score
-
-        exp_scores = {k: math.exp(v * 5.5) for k, v in scores.items()}
-        sum_exp = sum(exp_scores.values())
-        produce_probs = {k: v / sum_exp for k, v in exp_scores.items()}
-
-        sorted_produce = sorted(produce_probs.items(), key=lambda x: x[1], reverse=True)
-        top_produce = [
-            {"label": name, "probability": round(prob, 4), "percentage": round(prob * 100, 1)}
-            for name, prob in sorted_produce[:3]
-        ]
-        best_produce = top_produce[0]["label"]
-        produce_conf = top_produce[0]["probability"]
-
-        best_freshness, freshness_conf, top_freshness = self._estimate_freshness(
-            best_produce, brownish_spots, dark_pixels
+        notes = (
+            "Visual Surface Heuristic: Evaluates visible skin browning and surface spot proportion only. "
+            "Generic vision models cannot detect microbial pathogens, mold toxins, or internal decay. "
+            "Physical inspection of smell and firmness is required."
         )
+        return state, browning_ratio, notes
 
-        return best_produce, produce_conf, top_produce, best_freshness, freshness_conf, top_freshness
-
-    def _infer_pytorch(self, img: Image.Image):
-        """Run inference using loaded PyTorch model."""
+    def _infer_pytorch(self, img: Image.Image) -> Tuple[str, float, List[Dict[str, Any]]]:
+        """Run inference using custom loaded PyTorch model."""
         import torchvision.transforms as transforms
         preprocess = transforms.Compose([
             transforms.Resize(256),
             transforms.CenterCrop(224),
-            transforms.ToTensor],
+            transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        )
+        ])
         input_tensor = preprocess(img).unsqueeze(0)
 
         self.pytorch_model.eval()
@@ -559,12 +464,10 @@ class VisionModelService:
             outputs = self.pytorch_model(input_tensor)
             if isinstance(outputs, dict):
                 produce_logits = outputs["produce"]
-                freshness_logits = outputs.get("freshness")
-            elif isinstance(outputs, (tuple, list)) and len(outputs) == 2:
-                produce_logits, freshness_logits = outputs[0], outputs[1]
+            elif isinstance(outputs, (tuple, list)):
+                produce_logits = outputs[0]
             else:
                 produce_logits = outputs
-                freshness_logits = None
 
             produce_probs = torch.softmax(produce_logits, dim=1)[0].cpu().numpy()
             top3_indices = produce_probs.argsort()[-3:][::-1]
@@ -579,27 +482,7 @@ class VisionModelService:
             best_produce = top_produce[0]["label"]
             produce_conf = top_produce[0]["probability"]
 
-            if freshness_logits is not None:
-                freshness_probs = torch.softmax(freshness_logits, dim=1)[0].cpu().numpy()
-                top_f_indices = freshness_probs.argsort()[::-1]
-                top_freshness = [
-                    {
-                        "label": FRESHNESS_STATES[i % len(FRESHNESS_STATES)],
-                        "probability": round(float(freshness_probs[i]), 4),
-                        "percentage": round(float(freshness_probs[i]) * 100, 1)
-                    }
-                    for i in top_f_indices
-                ]
-            else:
-                top_freshness = [
-                    {"label": "Fresh", "probability": 0.85, "percentage": 85.0},
-                    {"label": "Fair / Consume Soon", "probability": 0.12, "percentage": 12.0},
-                    {"label": "Overripe / Spoiled", "probability": 0.03, "percentage": 3.0}
-                ]
-            best_freshness = top_freshness[0]["label"]
-            freshness_conf = top_freshness[0]["probability"]
-
-        return best_produce, produce_conf, top_produce, best_freshness, freshness_conf, top_freshness
+        return best_produce, produce_conf, top_produce
 
     def _calculate_uncertainty(self, top_produce: List[Dict[str, Any]], top_conf: float) -> Tuple[float, bool]:
         """Compute normalized entropy-based uncertainty score."""
@@ -611,8 +494,8 @@ class VisionModelService:
         max_entropy = math.log2(max(len(probs), 2))
         normalized_uncertainty = min(1.0, entropy / max_entropy) if max_entropy > 0 else 0.0
 
-        # Flag uncertain if top prediction has low confidence (< 45%) or high entropy (> 0.70)
-        is_uncertain = (top_conf < 0.45) or (normalized_uncertainty > 0.70)
+        # Flag uncertain if top prediction has low confidence (< 35%) or high entropy (> 0.70)
+        is_uncertain = (top_conf < 0.35) or (normalized_uncertainty > 0.70)
         return normalized_uncertainty, is_uncertain
 
 

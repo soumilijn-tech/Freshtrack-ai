@@ -24,15 +24,21 @@ class ScanResultResponse(BaseModel):
     freshness: str
     confidence: float
     confidence_pct: float
+    produce_model: Optional[str] = "MobileNetV2 (ONNX)"
+    produce_confidence: Optional[float] = None
     uncertainty_score: float
     is_uncertain: bool
     top_produce_predictions: List[PredictionItem]
     top_freshness_predictions: List[PredictionItem]
     storage_recommendation: StorageRecommendation
     image_url: str
-    mode: str  # 'demo_heuristic', 'pretrained_onnx_mobilenet', or 'pytorch_trained'
+    mode: str  # 'pretrained_onnx_mobilenet', 'pytorch_trained', or 'model_unavailable'
+    model_status: Optional[str] = "loaded"
     model_notice: str
     warning_notice: Optional[str] = None
+    freshness_assessment_method: Optional[str] = "Surface Visual Discoloration Index (Heuristic)"
+    freshness_method: Optional[str] = "Surface Visual Discoloration Index (Heuristic)"
+    freshness_notes: Optional[str] = None
     safety_disclaimer: str
     is_food_safety_guaranteed: bool = False
     inference_time_ms: float

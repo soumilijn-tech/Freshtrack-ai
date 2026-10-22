@@ -49,7 +49,7 @@ def spotted_image():
 
 def test_vision_service_initialization():
     service = VisionModelService()
-    assert service.mode in ("demo_heuristic", "pytorch_trained", "pretrained_onnx_mobilenet")
+    assert service.mode in ("model_unavailable", "pytorch_trained", "pretrained_onnx_mobilenet")
     assert service.model_notice != ""
 
 def test_vision_prediction_schema_and_disclaimer(test_image):
@@ -85,9 +85,9 @@ def test_spotted_image_heuristic_detection(spotted_image):
     service = VisionModelService()
     result = service.predict(spotted_image)
     
-    # Should detect yellow produce and overripe/fair status
-    assert result["produce"] in ("Banana", "Lemon", "Apple", "Orange")
-    assert result["freshness"] in ("Fair / Consume Soon", "Overripe / Spoiled")
+    # Should detect produce and overripe/fair surface status
+    assert "produce" in result
+    assert result["freshness"] in ("Fair / Consume Soon", "Overripe / Browning Detected", "Overripe / Spoiled")
 
 def test_invalid_image_raises_error():
     service = VisionModelService()

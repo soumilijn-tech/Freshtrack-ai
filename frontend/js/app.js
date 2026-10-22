@@ -84,22 +84,36 @@ class FreshTrackApp {
       const statusPill = document.getElementById('model-status-pill');
       const statusText = document.getElementById('model-status-text');
       const banner = document.getElementById('demo-mode-banner');
+      const bannerText = document.getElementById('demo-mode-banner-text');
 
-      if (status.ai_mode === 'pretrained_onnx_mobilenet') {
-        statusPill.className = 'model-status-pill pytorch';
-        statusText.textContent = 'MobileNetV2 Active';
-        if (banner) banner.style.display = 'none';
-      } else if (status.ai_mode === 'pytorch_trained' || status.is_custom_model_loaded) {
-        statusPill.className = 'model-status-pill pytorch';
-        statusText.textContent = 'PyTorch Model Active';
+      if (status.model_status === 'loaded') {
+        if (status.ai_mode === 'pretrained_onnx_mobilenet' || (status.produce_model && status.produce_model.includes('MobileNetV2'))) {
+          if (statusPill) statusPill.className = 'model-status-pill pytorch';
+          if (statusText) statusText.textContent = 'MobileNetV2 AI Active';
+        } else if (status.ai_mode === 'pytorch_trained' || status.is_custom_model_loaded) {
+          if (statusPill) statusPill.className = 'model-status-pill pytorch';
+          if (statusText) statusText.textContent = 'PyTorch AI Active';
+        } else {
+          if (statusPill) statusPill.className = 'model-status-pill pytorch';
+          if (statusText) statusText.textContent = 'AI Model Active';
+        }
         if (banner) banner.style.display = 'none';
       } else {
-        statusPill.className = 'model-status-pill';
-        statusText.textContent = 'Demo Mode (Heuristics)';
-        if (banner) banner.style.display = 'flex';
+        if (statusPill) statusPill.className = 'model-status-pill unavailable';
+        if (statusText) statusText.textContent = 'Model Unavailable';
+        if (banner) {
+          banner.style.display = 'flex';
+          if (bannerText) {
+            bannerText.innerHTML = `<strong>AI Model Unavailable:</strong> ${status.model_load_error || 'Model weights could not be loaded'}. Genuine AI inference is currently paused.`;
+          }
+        }
       }
     } catch (err) {
       console.warn('Could not retrieve system status', err);
+      const statusPill = document.getElementById('model-status-pill');
+      const statusText = document.getElementById('model-status-text');
+      if (statusPill) statusPill.className = 'model-status-pill unavailable';
+      if (statusText) statusText.textContent = 'Model Unavailable';
     }
   }
 
@@ -279,9 +293,37 @@ class FreshTrackApp {
       });
     }
 
-    // Gauges: Confidence & Uncertainty
+    // Top Freshness / Surface Discoloration Observations
+    const topFreshnessList = document.getElementById('top-freshness-list');
+    if (topFreshnessList && result.top_freshness_predictions) {
+      topFreshnessList.innerHTML = '';
+      result.top_freshness_predictions.forEach((p, idx) => {
+        const item = document.createElement('div');
+        item.className = 'prob-item';
+        item.innerHTML = `
+          <div class="prob-label-row">
+            <span>${p.label}</span>
+            <span>${p.percentage}%</span>
+          </div>
+          <div class="prob-track">
+            <div class="prob-fill ${idx > 0 ? 'alt' : ''}" style="width: ${p.percentage}%"></div>
+          </div>
+        `;
+        topFreshnessList.appendChild(item);
+      });
+    }
+
+    const freshNotesElem = document.getElementById('result-freshness-notes');
+    if (freshNotesElem) {
+      freshNotesElem.textContent = result.freshness_notes || '';
+    }
+
+    // Gauges: Confidence, Surface Quality & Uncertainty
     const confVal = document.getElementById('result-confidence-val');
     if (confVal) confVal.textContent = `${result.confidence_pct}%`;
+
+    const freshMetricVal = document.getElementById('result-freshness-metric-val');
+    if (freshMetricVal) freshMetricVal.textContent = result.freshness;
 
     const uncertVal = document.getElementById('result-uncertainty-val');
     const uncertHint = document.getElementById('result-uncertainty-hint');
@@ -331,8 +373,8 @@ class FreshTrackApp {
       if (result.warning_notice) {
         warningText.innerHTML = `<strong>Attention:</strong> ${result.warning_notice}`;
         warningBanner.style.display = 'flex';
-      } else if (result.is_uncertain) {
-        warningText.innerHTML = `<strong>Low Confidence:</strong> Visual ambiguity detected (${result.confidence_pct}% confidence). Please verify visually.`;
+      } else if (result.confidence_pct < 35 || result.is_uncertain) {
+        warningText.innerHTML = `<strong>Low Confidence / High Uncertainty:</strong> Visual ambiguity detected (${result.confidence_pct}% confidence). The model probability is below the 35% threshold. Please verify visually.`;
         warningBanner.style.display = 'flex';
       } else {
         warningBanner.style.display = 'none';

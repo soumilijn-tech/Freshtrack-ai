@@ -54,13 +54,11 @@
 
     <!-- View 1: Scan & Inference -->
     <section id="view-scan" class="view-section active">
-      <!-- Demo Mode Banner Notice -->
-      <div id="demo-mode-banner" class="alert-banner">
-        <div style="font-size: 1.25rem;">ℹ️</div>
-        <div>
-          <strong>Demo Mode Active:</strong> No custom PyTorch weights file was found at <code>backend/models/freshtrack_model.pth</code>.
-          Predictions are currently simulated using computer-vision color & texture heuristics.
-          <a href="#" onclick="document.querySelector('[data-view=ai-hub]').click(); return false;">Open the Colab AI Hub</a> to train and connect your transfer learning model.
+      <!-- Model Status Notice Banner (Shown only when model cannot load) -->
+      <div id="demo-mode-banner" class="alert-banner" style="display: none;">
+        <div style="font-size: 1.25rem;">⚠️</div>
+        <div id="demo-mode-banner-text">
+          <strong>AI Model Offline:</strong> The computer vision neural network is currently unavailable. Genuine AI inference is paused.
         </div>
       </div>
 
@@ -98,7 +96,7 @@
 
           <!-- Quick Sample Testing Bar -->
           <div class="sample-bar">
-            <div class="sample-title">⚡ Instant Demo Test Samples</div>
+            <div class="sample-title">⚡ Instant Produce Test Samples</div>
             <div class="sample-buttons" id="sample-buttons-container">
               <!-- Dynamically populated sample buttons -->
             </div>
@@ -108,8 +106,8 @@
         <!-- Scanning Loading Indicator -->
         <div id="scan-loading" style="display: none; flex-direction: column; align-items: center; justify-content: center; padding: 3rem; background: var(--bg-card); border-radius: var(--radius-lg); border: 1px solid var(--border);">
           <div style="font-size: 2.5rem; animation: spin 1s infinite linear;">⚙️</div>
-          <p style="margin-top: 1rem; font-weight: 700; color: var(--text-main);">Analyzing produce features...</p>
-          <p style="font-size: 0.85rem; color: var(--text-muted);">Estimating color dominance, surface texture, and visible decay.</p>
+          <p style="margin-top: 1rem; font-weight: 700; color: var(--text-main);">Running MobileNetV2 Neural Inference...</p>
+          <p style="font-size: 0.85rem; color: var(--text-muted);">Extracting deep feature maps and assessing surface optical discoloration.</p>
         </div>
 
         <!-- Scan Results Card -->
@@ -135,12 +133,17 @@
               <span id="result-freshness-badge" class="badge badge-fresh">Fresh</span>
             </div>
 
-            <!-- Gauges: Confidence & Uncertainty -->
+            <!-- Gauges: Confidence, Surface Quality & Uncertainty -->
             <div class="metrics-row">
               <div class="metric-gauge">
-                <div class="gauge-label">Confidence</div>
+                <div class="gauge-label">Species Confidence</div>
                 <div id="result-confidence-val" class="gauge-val">94.2%</div>
-                <div class="gauge-hint">Model softmax score</div>
+                <div class="gauge-hint">Neural softmax probability</div>
+              </div>
+              <div class="metric-gauge">
+                <div class="gauge-label">Surface Quality</div>
+                <div id="result-freshness-metric-val" class="gauge-val">Clean</div>
+                <div class="gauge-hint">Discoloration index (heuristic)</div>
               </div>
               <div class="metric-gauge">
                 <div class="gauge-label">Visual Uncertainty</div>
@@ -149,13 +152,26 @@
               </div>
             </div>
 
-            <!-- Top Predicted Classes -->
+            <!-- Top Predicted Species Classes -->
             <div class="probability-group">
               <div style="font-size: 0.85rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">
-                Classification Probabilities
+                Neural Produce Classification
               </div>
               <div id="top-produce-list">
                 <!-- Top 3 probability bars inserted here -->
+              </div>
+            </div>
+
+            <!-- Surface Visual Freshness Breakdown -->
+            <div class="probability-group" style="margin-top: 1rem;">
+              <div style="font-size: 0.85rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">
+                Surface Visual Discoloration Index (Optical Heuristic)
+              </div>
+              <div id="top-freshness-list">
+                <!-- Discoloration vs Clean skin bars inserted here -->
+              </div>
+              <div id="result-freshness-notes" style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.4rem;">
+                <!-- Freshness assessment notes -->
               </div>
             </div>
 

@@ -169,6 +169,12 @@ body {
   border-color: var(--primary-border);
 }
 
+.model-status-pill.unavailable {
+  background: #fee2e2;
+  color: #991b1b;
+  border-color: #fecaca;
+}
+
 .status-dot {
   width: 8px;
   height: 8px;
