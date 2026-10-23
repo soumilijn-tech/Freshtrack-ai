@@ -230,6 +230,55 @@ PRODUCE_KNOWLEDGE_BASE: Dict[str, Dict[str, Any]] = {
         "shelf_life_table": {"Countertop": "7-10 days", "Refrigerator": "3-4 weeks", "Freezer": "6 months (zest and juice)"},
         "freeze_friendly": True,
         "freezing_instructions": "Freeze lemon juice in ice cube trays. Slice whole lemons into wheels and freeze on parchment paper for tea and cocktails."
+    },
+    "Persimmon": {
+        "category": "Fruit",
+        "optimal_location": "Countertop until soft/ripe, then Refrigerator Crisper Drawer",
+        "ideal_temp": "15°C - 20°C (Ripening) -> 1°C - 4°C (Storage)",
+        "humidity": "High (85-90%)",
+        "ethylene_status": "Ethylene Sensitive — responds rapidly to ethylene to accelerate ripening and tannin reduction.",
+        "tips": [
+            "Distinguish your variety: Non-astringent Fuyu persimmons (squat, tomato-like) can be eaten while firm and crisp. Astringent Hachiya (acorn-shaped) must soften completely to a translucent jelly consistency before eating to eliminate puckering soluble tannins.",
+            "Ripen firm astringent fruit stem-down on the countertop at room temperature away from direct sunlight. To accelerate ripening, enclose in a paper bag with an ethylene-producing apple or banana.",
+            "Once ripe, transfer to the refrigerator crisper drawer to extend freshness for 2-3 weeks.",
+            "Keep dry and check under the persistent 4-lobed calyx, as trapped moisture promotes surface fungal rot."
+        ],
+        "shelf_life_days": {"Fresh": 14, "Fair / Consume Soon": 4, "Overripe / Spoiled": 1},
+        "shelf_life_table": {"Countertop (Firm)": "4-7 days", "Refrigerator (Ripe)": "2-3 weeks", "Freezer": "6-8 months (pureed or whole)"},
+        "freeze_friendly": True,
+        "freezing_instructions": "Freeze whole ripe Hachiya persimmons; slice off the calyx and scoop out flesh with a spoon as natural sorbet. Alternatively, peel and puree ripe flesh with a dash of lemon juice and freeze in sealed containers."
+    },
+    "Mango": {
+        "category": "Fruit",
+        "optimal_location": "Countertop until ripe, then Refrigerator",
+        "ideal_temp": "18°C - 22°C (Ripening) -> 10°C - 12°C (Storage)",
+        "humidity": "Moderate (85%)",
+        "ethylene_status": "Moderate Ethylene Producer & Sensitive.",
+        "tips": [
+            "Never refrigerate hard, unripe mangoes; cold inhibits enzymatic ripening and dulls sweet flavor development.",
+            "Ripen at room temperature until fruit yields slightly to gentle pressure and exudes a sweet tropical aroma.",
+            "Move fully ripe mangoes to the refrigerator for up to 5 days."
+        ],
+        "shelf_life_days": {"Fresh": 7, "Fair / Consume Soon": 2, "Overripe / Spoiled": 1},
+        "shelf_life_table": {"Countertop (Unripe)": "3-6 days", "Refrigerator (Ripe)": "5-7 days", "Freezer": "10 months (cubed)"},
+        "freeze_friendly": True,
+        "freezing_instructions": "Peel, dice into bite-size cubes, freeze in a single layer on parchment paper, then pack into freezer bags."
+    },
+    "Eggplant": {
+        "category": "Vegetable",
+        "optimal_location": "Cool Pantry or Upper Refrigerator Shelf",
+        "ideal_temp": "10°C - 12°C (50°F - 54°F)",
+        "humidity": "High (90%)",
+        "ethylene_status": "Ethylene Sensitive — keep separate from apples, melons, and tomatoes.",
+        "tips": [
+            "Eggplants are chilling sensitive; temperatures below 7°C cause internal browning, pitting, and decay.",
+            "Store in a breathable paper bag or wrap loosely in paper towels inside the crisper drawer.",
+            "Use within 4-5 days of purchase while skin remains taut and glossy."
+        ],
+        "shelf_life_days": {"Fresh": 6, "Fair / Consume Soon": 2, "Overripe / Spoiled": 1},
+        "shelf_life_table": {"Cool Pantry": "3-4 days", "Refrigerator": "5-7 days", "Freezer": "6 months (cooked/roasted)"},
+        "freeze_friendly": True,
+        "freezing_instructions": "Do not freeze raw. Roast or steam slices/puree first, then freeze."
     }
 }
 

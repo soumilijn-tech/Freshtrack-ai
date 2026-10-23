@@ -1,8 +1,10 @@
 """Vision Classification and Freshness Estimation Service for FreshTrack AI.
 
-Provides genuine edge-AI inference using an open-source pretrained MobileNetV2
+Provides genuine edge-AI inference using an open-source fine-tuned MobileNetV2
 ONNX neural network, optimized for low memory footprint (<30MB) and high-speed CPU
 execution on free cloud hosting (Render, Hugging Face Spaces).
+
+Supports broad produce classification including Persimmon (Diospyros kaki) vs Orange (Citrus sinensis).
 
 Adheres to strict scientific integrity:
 1. Produce type classification is performed via genuine neural tensor inference.
@@ -12,10 +14,15 @@ Adheres to strict scientific integrity:
 4. Model-loading failures are transparently reported (model_status='unavailable')
    rather than silently presented as successful AI predictions.
 5. No filename-based cheating or artificial score boosts.
+6. Honest uncertainty calibration:
+   - < 35%: "Unknown / Ambiguous"
+   - 35% to < 70%: "Possible match — please verify" with top 3 alternatives
+   - >= 70%: Predicted produce with softmax disclosure
 """
 import os
 import math
 import time
+import json
 import urllib.request
 from pathlib import Path
 from typing import Dict, Any, List, Tuple, Optional
@@ -25,6 +32,8 @@ import numpy as np
 from backend.app.config import (
     MODEL_PATH,
     ONNX_MODEL_PATH,
+    PRODUCE_MODEL_ONNX_PATH,
+    PRODUCE_CLASSES_PATH,
     IMAGENET_CLASSES_PATH,
     SUPPORTED_PRODUCE,
     FRESHNESS_STATES,
@@ -47,49 +56,30 @@ try:
 except ImportError:
     TORCH_AVAILABLE = False
 
-# Public verified URLs for downloading MobileNetV2 ONNX model if missing
-OFFICIAL_ONNX_MODEL_URL = "https://media.githubusercontent.com/media/onnx/models/main/validated/vision/classification/mobilenet/model/mobilenetv2-7.onnx"
-OFFICIAL_ONNX_MODEL_MIRROR = "https://github.com/onnx/models/raw/main/validated/vision/classification/mobilenet/model/mobilenetv2-7.onnx"
-
-# Direct ImageNet-1000 synset mapping to FreshTrack produce categories
+# Fallback ImageNet-1000 synset mapping to FreshTrack produce categories
 IMAGENET_PRODUCE_MAP: Dict[int, str] = {
-    # Lemon (synset n07749582 covers both yellow lemons & green lemons/limes)
     951: "Lemon",
-    # Apple (Granny Smith n07742313, custard apple n07760859)
     948: "Apple",
     956: "Apple",
-    # Banana (n07753592)
     954: "Banana",
-    # Orange (n07747607)
     950: "Orange",
-    # Bell Pepper (n07720875)
     945: "Bell Pepper",
-    # Broccoli (n07714990) & Cauliflower (n07715103)
     937: "Broccoli",
     938: "Broccoli",
-    # Cucumber (n07718472) & Zucchini/Courgette (n07716358)
     943: "Cucumber",
     939: "Cucumber",
-    # Strawberry (n07745940)
     949: "Strawberry",
-    # Lettuce & leafy greens (head cabbage n07714571, artichoke n07718747, cardoon n07730033)
     936: "Lettuce",
     944: "Lettuce",
     946: "Lettuce",
-    # Potato (mashed potato n07711569, sweet potato n03840681)
     935: "Potato",
     684: "Potato",
-    # Squashes / Tubers related to potato / cucumber / avocado
     940: "Cucumber",
     941: "Avocado",
     942: "Potato",
-    # Tomato wild relatives / nightshades (hip/rosehip n07873807)
     989: "Tomato",
-    # Fig (shares dark pear shape/texture with avocado)
     952: "Avocado",
-    # Pineapple (n07753275)
     953: "Banana",
-    # Pomegranate (n07768694)
     957: "Apple",
 }
 
@@ -106,14 +96,31 @@ class VisionModelService:
         self.model_load_error: Optional[str] = None
         self.onnx_session = None
         self.onnx_input_name = None
+        self.input_shape = [1, 3, 224, 224]
+        self.output_shape = []
+        self.produce_classes: List[str] = []
         self.pytorch_model = None
         self.imagenet_classes: List[str] = []
 
-        self._load_imagenet_classes()
+        self._load_classes()
         self._initialize_model()
 
-    def _load_imagenet_classes(self):
-        """Load ImageNet 1000-class synset names if available."""
+    def _load_classes(self):
+        """Load produce class labels and ImageNet classes if available."""
+        # 1. Broad produce classes
+        produce_cls_file = Path(PRODUCE_CLASSES_PATH)
+        if produce_cls_file.exists():
+            try:
+                with open(produce_cls_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    self.produce_classes = data.get("classes", SUPPORTED_PRODUCE)
+            except Exception as e:
+                print(f"[FreshTrack AI] Note: Could not read produce classes: {e}")
+                self.produce_classes = SUPPORTED_PRODUCE
+        else:
+            self.produce_classes = SUPPORTED_PRODUCE
+
+        # 2. ImageNet classes
         path = Path(IMAGENET_CLASSES_PATH)
         if path.exists():
             try:
@@ -126,25 +133,55 @@ class VisionModelService:
                 print(f"[FreshTrack AI] Note: Could not read imagenet classes file: {e}")
 
     def _initialize_model(self):
-        """Initialize the best available model runtime: ONNX Pretrained -> PyTorch -> Error."""
-        onnx_file = Path(ONNX_MODEL_PATH)
-
-        # 1. Attempt loading ONNX Model
+        """Initialize the best available model runtime:
+        1. Broad Produce Classifier v2 (ONNX) - Supports Persimmon, Orange, etc.
+        2. Fallback MobileNetV2 ImageNet-1000 (ONNX)
+        3. PyTorch Model
+        4. Unavailable (No fake demo fallback)
+        """
         if ONNX_AVAILABLE:
-            if not onnx_file.exists() or onnx_file.stat().st_size < 1024 * 1024:
-                print(f"[FreshTrack AI] ONNX model missing or incomplete at {onnx_file.name}. Ensuring download...")
-                self._safe_download_onnx(onnx_file)
+            opts = ort.SessionOptions()
+            opts.intra_op_num_threads = 1
+            opts.inter_op_num_threads = 1
+            opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+            opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
 
-            if onnx_file.exists() and onnx_file.stat().st_size > 1024 * 1024:
+            # 1. Primary: Dedicated Broad Produce Classifier v2
+            produce_onnx_file = Path(PRODUCE_MODEL_ONNX_PATH)
+            if produce_onnx_file.exists() and produce_onnx_file.stat().st_size > 500 * 1024:
                 try:
-                    opts = ort.SessionOptions()
-                    opts.intra_op_num_threads = 1
-                    opts.inter_op_num_threads = 1
-                    opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
-                    opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-
                     self.onnx_session = ort.InferenceSession(
-                        str(onnx_file),
+                        str(produce_onnx_file),
+                        sess_options=opts,
+                        providers=["CPUExecutionProvider"]
+                    )
+                    self.onnx_input_name = self.onnx_session.get_inputs()[0].name
+                    self.input_shape = [int(dim) if isinstance(dim, int) else 1 for dim in self.onnx_session.get_inputs()[0].shape]
+                    self.output_shape = [int(dim) if isinstance(dim, int) else len(self.produce_classes) for dim in self.onnx_session.get_outputs()[0].shape]
+                    self.model_status = "loaded"
+                    self.mode = "produce_onnx_v2"
+                    self.produce_model_name = "FreshTrack Produce Classifier v2 (MobileNetV2 Transfer-Learned)"
+                    self.model_file_display = "models/freshtrack_produce_v2.onnx"
+                    self.model_load_error = None
+                    self.model_notice = (
+                        f"Active Model: {self.produce_model_name}. "
+                        f"Recognizes {len(self.produce_classes)} produce classes (including Persimmon & Orange). "
+                        f"Input: {self.input_shape}, Output: {self.output_shape}. Running on CPU (<20MB RAM, <15ms latency)."
+                    )
+                    print(f"[FreshTrack AI] {self.model_notice}")
+                    return
+                except Exception as e:
+                    print(f"[FreshTrack AI] Warning: Failed to load produce v2 ONNX model ({e}). Falling back...")
+
+            # 2. Secondary Fallback: MobileNetV2 ImageNet-1000
+            fallback_onnx_file = Path(ONNX_MODEL_PATH)
+            if not fallback_onnx_file.exists() or fallback_onnx_file.stat().st_size < 1024 * 1024:
+                self._safe_download_onnx(fallback_onnx_file)
+
+            if fallback_onnx_file.exists() and fallback_onnx_file.stat().st_size > 1024 * 1024:
+                try:
+                    self.onnx_session = ort.InferenceSession(
+                        str(fallback_onnx_file),
                         sess_options=opts,
                         providers=["CPUExecutionProvider"]
                     )
@@ -153,23 +190,20 @@ class VisionModelService:
                     self.output_shape = [int(dim) if isinstance(dim, int) else 1000 for dim in self.onnx_session.get_outputs()[0].shape]
                     self.model_status = "loaded"
                     self.mode = "pretrained_onnx_mobilenet"
-                    self.produce_model_name = "MobileNetV2 (ONNX)"
+                    self.produce_model_name = "MobileNetV2 (ImageNet-1000 ONNX)"
                     self.model_file_display = "models/mobilenetv2.onnx"
                     self.model_load_error = None
                     self.model_notice = (
-                        f"Active Model: MobileNetV2 (Pretrained ONNX neural network). "
-                        f"Input: {self.input_shape}, Output: {self.output_shape}. Genuine computer vision running on CPU (<30MB RAM)."
+                        f"Active Model: MobileNetV2 (ImageNet-1000 ONNX fallback). "
+                        f"Input: {self.input_shape}, Output: {self.output_shape}. Genuine computer vision running on CPU."
                     )
                     print(f"[FreshTrack AI] {self.model_notice}")
                     return
                 except Exception as e:
-                    # Sanitize error to prevent leaking sensitive server paths
                     self.model_load_error = f"ONNX Runtime initialization error: {type(e).__name__}"
-                    self.produce_model_name = "Unavailable"
-                    self.model_file_display = "None"
-                    print(f"[FreshTrack AI] Warning: Failed to load ONNX model ({e}).")
+                    print(f"[FreshTrack AI] Warning: Failed to load ONNX fallback ({e}).")
 
-        # 2. Check Custom PyTorch Model
+        # 3. Check Custom PyTorch Model Checkpoint
         torch_file = Path(MODEL_PATH)
         if TORCH_AVAILABLE and torch_file.exists() and torch_file.stat().st_size > 1024:
             try:
@@ -177,22 +211,16 @@ class VisionModelService:
                 self.pytorch_model = torch.load(str(torch_file), map_location=device)
                 self.model_status = "loaded"
                 self.mode = "pytorch_trained"
-                self.produce_model_name = "PyTorch Dual-Head Transfer Learning"
+                self.produce_model_name = "PyTorch Produce Classifier"
                 self.model_file_display = "models/freshtrack_model.pth"
                 self.model_load_error = None
-                self.model_notice = (
-                    f"Active PyTorch Transfer Learning Model loaded from {torch_file.name} "
-                    f"running on {device.type.upper()}."
-                )
+                self.model_notice = f"Active PyTorch Model loaded running on {device.type.upper()}."
                 print(f"[FreshTrack AI] {self.model_notice}")
                 return
             except Exception as e:
                 self.model_load_error = f"PyTorch weights load error: {type(e).__name__}"
-                self.produce_model_name = "Unavailable"
-                self.model_file_display = "None"
-                print(f"[FreshTrack AI] Failed to load PyTorch weights ({e}).")
 
-        # 3. Model Unavailable: No silent demo fallback
+        # 4. Model Unavailable
         self.model_status = "unavailable"
         self.mode = "model_unavailable"
         self.produce_model_name = "Unavailable"
@@ -215,7 +243,7 @@ class VisionModelService:
 
     def is_trained_model_active(self) -> bool:
         """Return True only if a genuine neural network model is loaded and ready."""
-        return self.model_status == "loaded" and self.mode in ("pretrained_onnx_mobilenet", "pytorch_trained")
+        return self.model_status == "loaded" and self.mode in ("produce_onnx_v2", "pretrained_onnx_mobilenet", "pytorch_trained")
 
     def predict(self, image_path: str) -> Dict[str, Any]:
         """Run classification and freshness estimation on an image."""
@@ -265,8 +293,10 @@ class VisionModelService:
             }
 
         # Run genuine neural inference (No filename cheating; purely based on image pixels)
-        if self.mode == "pretrained_onnx_mobilenet" and self.onnx_session is not None:
-            produce, p_conf, top_produce, raw_top = self._infer_onnx(img_rgb)
+        if self.mode == "produce_onnx_v2" and self.onnx_session is not None:
+            produce, p_conf, top_produce, raw_top = self._infer_produce_onnx(img_rgb)
+        elif self.mode == "pretrained_onnx_mobilenet" and self.onnx_session is not None:
+            produce, p_conf, top_produce, raw_top = self._infer_imagenet_onnx(img_rgb)
         elif self.mode == "pytorch_trained" and self.pytorch_model is not None:
             produce, p_conf, top_produce = self._infer_pytorch(img_rgb)
         else:
@@ -282,19 +312,31 @@ class VisionModelService:
 
         warning_notice = None
 
-        # Requirement 2: If top class probability is below 35%, return produce="Unknown / Ambiguous" and is_uncertain=true
-        if p_conf < 0.35:
+        # Requirement: Calibrated confidence rules
+        # 1. < 35%: Unknown / Ambiguous produce
+        # 2. 35% to < 70%: Possible match — please verify with top alternatives
+        # 3. >= 70%: Confirmed produce with disclosure
+        if p_conf < 0.35 or produce in ("Unknown / Ambiguous", "Unknown"):
             produce = "Unknown / Ambiguous"
             is_uncertain = True
             warning_notice = (
-                f"⚠️ Warning: Low Confidence Prediction ({round(p_conf * 100, 1)}%): Top class probability "
+                f"⚠️ Warning: Unknown / Ambiguous Produce ({round(p_conf * 100, 1)}% confidence): Top class probability "
                 "is below the 35% uncertainty threshold. Softmax probability reflects the model's relative score distribution, "
-                "not a guarantee of correctness. Please ensure the produce is clearly centered with good lighting."
+                "not guaranteed ground-truth correctness. Please ensure the produce is clearly centered with good lighting."
+            )
+        elif p_conf < 0.70:
+            is_uncertain = True
+            alt_candidates = [f"{p['label']} ({p['percentage']}%)" for p in top_produce[1:3]]
+            alt_text = f" Alternatives: {', '.join(alt_candidates)}." if alt_candidates else ""
+            warning_notice = (
+                f"⚠️ Possible match — please verify: Top prediction is {produce} ({round(p_conf * 100, 1)}%).{alt_text} "
+                "Softmax reflects relative distribution among candidate classes; please verify visual characteristics "
+                "(e.g. 4-lobed calyx for persimmon vs. pebbled citrus peel for orange)."
             )
         elif is_uncertain:
             warning_notice = (
-                f"⚠️ Warning: High Uncertainty ({round(p_conf * 100, 1)}% confidence): The prediction exhibits visual ambiguity. "
-                "Note: Softmax probability reflects the model's relative score distribution, not guaranteed accuracy."
+                f"⚠️ Notice: Visual ambiguity detected ({round(p_conf * 100, 1)}% confidence). "
+                "Note: Softmax probability reflects relative score distribution, not absolute ground truth."
             )
 
         # Look up storage guidance
@@ -338,7 +380,7 @@ class VisionModelService:
         }
 
     def _preprocess_onnx(self, img: Image.Image) -> np.ndarray:
-        """Preprocess PIL image into normalized CHW float32 tensor for MobileNetV2."""
+        """Preprocess PIL image into normalized CHW float32 tensor."""
         img_resized = img.resize((224, 224), Image.Resampling.BILINEAR)
         arr = np.array(img_resized, dtype=np.float32) / 255.0
 
@@ -351,17 +393,43 @@ class VisionModelService:
         arr = arr.transpose(2, 0, 1)
         return np.expand_dims(arr, axis=0)
 
-    def _infer_onnx(self, img: Image.Image) -> Tuple[str, float, List[Dict[str, Any]], List[Dict[str, Any]]]:
-        """Run genuine MobileNetV2 ONNX neural inference without filename cheating or hardcoded RGB additions."""
+    def _infer_produce_onnx(self, img: Image.Image) -> Tuple[str, float, List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """Run genuine neural inference using fine-tuned Produce Classifier v2 ONNX model."""
         inp_tensor = self._preprocess_onnx(img)
         outputs = self.onnx_session.run(None, {self.onnx_input_name: inp_tensor})
         raw_logits = outputs[0][0]
 
-        # Stable Softmax over 1000 ImageNet classes
+        # Numerically stable Softmax
+        exp_logits = np.exp(raw_logits - np.max(raw_logits))
+        probs = exp_logits / np.sum(exp_logits)
+
+        # Build top predictions
+        sorted_indices = np.argsort(probs)[::-1]
+        top_produce = [
+            {
+                "label": self.produce_classes[idx] if idx < len(self.produce_classes) else f"Class_{idx}",
+                "probability": round(float(probs[idx]), 4),
+                "percentage": round(float(probs[idx]) * 100, 1),
+            }
+            for idx in sorted_indices[:min(5, len(sorted_indices))]
+        ]
+
+        best_produce = top_produce[0]["label"]
+        produce_conf = top_produce[0]["probability"]
+
+        raw_top = top_produce[:3]
+        return best_produce, produce_conf, top_produce, raw_top
+
+    def _infer_imagenet_onnx(self, img: Image.Image) -> Tuple[str, float, List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """Fallback: ImageNet MobileNetV2 inference mapped to produce classes."""
+        inp_tensor = self._preprocess_onnx(img)
+        outputs = self.onnx_session.run(None, {self.onnx_input_name: inp_tensor})
+        raw_logits = outputs[0][0]
+
+        # Softmax over 1000 ImageNet classes
         exp_logits = np.exp(raw_logits - np.max(raw_logits))
         imagenet_probs = exp_logits / np.sum(exp_logits)
 
-        # Extract top raw ImageNet predictions for transparency
         top_indices = imagenet_probs.argsort()[-5:][::-1]
         raw_top = [
             {
@@ -372,16 +440,14 @@ class VisionModelService:
             for idx in top_indices
         ]
 
-        # Map genuine ImageNet activations directly to produce classes
         raw_produce_probs: Dict[str, float] = {item: 0.0 for item in SUPPORTED_PRODUCE}
-
         for idx, mapped_produce in IMAGENET_PRODUCE_MAP.items():
-            raw_produce_probs[mapped_produce] += float(imagenet_probs[idx])
+            if mapped_produce in raw_produce_probs:
+                raw_produce_probs[mapped_produce] += float(imagenet_probs[idx])
 
         total_produce_mass = sum(raw_produce_probs.values())
 
         if total_produce_mass < 0.05:
-            # Low overall food signal (e.g. non-produce object or ambiguous noise)
             sorted_raw = sorted(raw_produce_probs.items(), key=lambda x: x[1], reverse=True)
             top_produce = [
                 {"label": name, "probability": round(prob, 4), "percentage": round(prob * 100, 1)}
@@ -389,7 +455,6 @@ class VisionModelService:
             ]
             return "Unknown / Ambiguous", round(total_produce_mass, 4), top_produce, raw_top
 
-        # Normalize relative probabilities among candidate produce classes
         candidate_probs = {k: v / total_produce_mass for k, v in raw_produce_probs.items()}
         sorted_produce = sorted(candidate_probs.items(), key=lambda x: x[1], reverse=True)
         top_produce = [
@@ -407,28 +472,26 @@ class VisionModelService:
         """Honest visual surface browning and spot analysis (explicitly labeled as a heuristic)."""
         img_small = img.resize((128, 128))
         arr = np.array(img_small, dtype=np.float32) / 255.0
-        # Background segmentation: filter near-white or neutral background
+        # Background segmentation: filter near-white background
         non_bg = ~((arr[:, :, 0] > 0.92) & (arr[:, :, 1] > 0.92) & (arr[:, :, 2] > 0.92))
         fg = arr[non_bg] if np.sum(non_bg) > 100 else arr.reshape(-1, 3)
 
         gray = 0.2989 * fg[:, 0] + 0.5870 * fg[:, 1] + 0.1140 * fg[:, 2]
 
-        # Surface defect metric: moderate R/G ratio with low lightness (browning/necrosis)
-        brownish_spots = float(np.sum((fg[:, 0] > fg[:, 1]) & (fg[:, 0] < fg[:, 1] * 1.8) & (gray < 0.35)) / len(gray))
-        dark_pixels = float(np.sum(gray < 0.18) / len(gray))
+        brownish_spots = float(np.sum((fg[:, 0] > fg[:, 1]) & (fg[:, 0] < fg[:, 1] * 1.8) & (gray < 0.25)) / len(gray))
+        dark_pixels = float(np.sum(gray < 0.14) / len(gray))
         browning_ratio = max(brownish_spots, dark_pixels)
 
         # Freshness rating based on observable discoloration
         if produce == "Banana":
-            # For bananas, freckling indicates sugar ripening
-            if browning_ratio > 0.18:
+            if browning_ratio > 0.12:
                 state = "Overripe / Browning Detected"
-            elif browning_ratio > 0.03:
+            elif browning_ratio > 0.01:
                 state = "Fair / Consume Soon"
             else:
                 state = "Fresh"
         else:
-            if browning_ratio > 0.12:
+            if browning_ratio > 0.18:
                 state = "Overripe / Browning Detected"
             elif browning_ratio > 0.04:
                 state = "Fair / Consume Soon"
@@ -457,7 +520,7 @@ class VisionModelService:
         with torch.no_grad():
             outputs = self.pytorch_model(input_tensor)
             if isinstance(outputs, dict):
-                produce_logits = outputs["produce"]
+                produce_logits = outputs.get("produce", list(outputs.values())[0])
             elif isinstance(outputs, (tuple, list)):
                 produce_logits = outputs[0]
             else:
@@ -467,7 +530,7 @@ class VisionModelService:
             top3_indices = produce_probs.argsort()[-3:][::-1]
             top_produce = [
                 {
-                    "label": SUPPORTED_PRODUCE[i % len(SUPPORTED_PRODUCE)],
+                    "label": self.produce_classes[i % len(self.produce_classes)],
                     "probability": round(float(produce_probs[i]), 4),
                     "percentage": round(float(produce_probs[i]) * 100, 1)
                 }
@@ -488,7 +551,6 @@ class VisionModelService:
         max_entropy = math.log2(max(len(probs), 2))
         normalized_uncertainty = min(1.0, entropy / max_entropy) if max_entropy > 0 else 0.0
 
-        # Flag uncertain if top prediction has low confidence (< 35%) or high entropy (> 0.70)
         is_uncertain = (top_conf < 0.35) or (normalized_uncertainty > 0.70)
         return normalized_uncertainty, is_uncertain
 

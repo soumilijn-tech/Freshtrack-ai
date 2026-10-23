@@ -35,6 +35,9 @@ htmlcov/
 # Database & Uploads
 data/*.db
 !data/.gitkeep
+data/produce_dataset/
+data/training_data/
+backend/data/
 uploads/*
 !uploads/.gitkeep
 
@@ -42,6 +45,8 @@ uploads/*
 *.pth
 *.pt
 *.onnx
+!backend/models/freshtrack_produce_v2.onnx
+!backend/models/produce_classes.json
 !backend/models/imagenet_classes.txt
 !backend/models/README.md
 

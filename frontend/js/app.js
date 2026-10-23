@@ -181,7 +181,8 @@ class FreshTrackApp {
           { id: 'fresh_apple', name: '🍎 Fresh Apple' },
           { id: 'spotted_banana', name: '🍌 Spotted Banana' },
           { id: 'fresh_tomato', name: '🍅 Fresh Tomato' },
-          { id: 'fresh_carrot', name: '🥕 Fresh Carrot' },
+          { id: 'persimmon', name: '🍊 Persimmon (Kaki)' },
+          { id: 'green_lemon', name: '🍋 Green Lemon' },
         ];
         defaultSamples.forEach((s) => {
           const btn = document.createElement('button');
@@ -200,6 +201,8 @@ class FreshTrackApp {
         if (s.id.includes('apple')) icon = '🍎';
         else if (s.id.includes('banana')) icon = '🍌';
         else if (s.id.includes('tomato')) icon = '🍅';
+        else if (s.id.includes('persimmon')) icon = '🍊';
+        else if (s.id.includes('lemon')) icon = '🍋';
         else if (s.id.includes('carrot')) icon = '🥕';
 
         btn.textContent = `${icon} ${s.name}`;
@@ -366,15 +369,27 @@ class FreshTrackApp {
       noticeElem.textContent = result.model_notice;
     }
 
-    // Low confidence / visual ambiguity warning banner
+    // Low confidence / uncertainty / verification warning banner
     const warningBanner = document.getElementById('result-warning-banner');
     const warningText = document.getElementById('result-warning-text');
     if (warningBanner && warningText) {
-      if (result.warning_notice) {
-        warningText.innerHTML = `<strong>Attention:</strong> ${result.warning_notice}`;
+      if (result.confidence_pct < 35 || result.produce.includes('Unknown') || result.produce.includes('Ambiguous')) {
+        warningText.innerHTML = `<strong>Unknown / Ambiguous Produce:</strong> Model confidence (${result.confidence_pct}%) is below the 35% threshold. Please center the produce with good lighting.`;
+        warningBanner.style.background = '#fef2f2';
+        warningBanner.style.borderColor = '#f87171';
+        warningBanner.style.color = '#991b1b';
         warningBanner.style.display = 'flex';
-      } else if (result.confidence_pct < 35 || result.is_uncertain) {
-        warningText.innerHTML = `<strong>Low Confidence / High Uncertainty:</strong> Visual ambiguity detected (${result.confidence_pct}% confidence). The model probability is below the 35% threshold. Please verify visually.`;
+      } else if (result.confidence_pct < 70) {
+        warningText.innerHTML = `<strong>Possible match — please verify:</strong> Neural confidence is ${result.confidence_pct}% (between 35% and 70%). Softmax reflects relative distribution among candidate classes; please verify visual characteristics.`;
+        warningBanner.style.background = '#fffbeb';
+        warningBanner.style.borderColor = '#f59e0b';
+        warningBanner.style.color = '#92400e';
+        warningBanner.style.display = 'flex';
+      } else if (result.warning_notice) {
+        warningText.innerHTML = `<strong>Attention:</strong> ${result.warning_notice}`;
+        warningBanner.style.background = '#fffbeb';
+        warningBanner.style.borderColor = '#f59e0b';
+        warningBanner.style.color = '#92400e';
         warningBanner.style.display = 'flex';
       } else {
         warningBanner.style.display = 'none';

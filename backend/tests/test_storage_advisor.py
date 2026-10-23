@@ -20,6 +20,13 @@ def test_potato_storage_recommendation():
     # Should warn never to refrigerate raw potatoes
     assert any("refrigerate" in tip.lower() for tip in advice["tips"])
 
+def test_persimmon_storage_recommendation():
+    advice = StorageAdvisor.get_recommendation("Persimmon", "Fresh")
+    assert "Countertop" in advice["location"]
+    assert "Ethylene" in advice["ethylene_status"]
+    assert any("calyx" in tip.lower() or "fuyu" in tip.lower() or "hachiya" in tip.lower() for tip in advice["tips"])
+    assert advice["freeze_friendly"] is True
+
 def test_unknown_produce_fallback():
     advice = StorageAdvisor.get_recommendation("ExoticDragonFruitXYZ", "Fresh")
     assert advice["location"] != ""

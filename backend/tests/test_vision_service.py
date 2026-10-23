@@ -49,7 +49,7 @@ def spotted_image():
 
 def test_vision_service_initialization():
     service = VisionModelService()
-    assert service.mode in ("model_unavailable", "pytorch_trained", "pretrained_onnx_mobilenet")
+    assert service.mode in ("model_unavailable", "pytorch_trained", "pretrained_onnx_mobilenet", "produce_onnx_v2")
     assert service.model_notice != ""
 
 def test_vision_prediction_schema_and_disclaimer(test_image):
@@ -66,7 +66,7 @@ def test_vision_prediction_schema_and_disclaimer(test_image):
 
     # Probabilities sum sanity check
     top_p = result["top_produce_predictions"]
-    assert len(top_p) == 3
+    assert len(top_p) >= 3
     for item in top_p:
         assert 0.0 <= item["probability"] <= 1.0
 

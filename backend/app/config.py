@@ -16,6 +16,8 @@ SAMPLE_IMAGES_DIR = FRONTEND_DIR / "assets" / "samples"
 DATABASE_PATH = os.getenv("DATABASE_PATH", str(DATA_DIR / "freshtrack.db"))
 MODEL_PATH = os.getenv("MODEL_PATH", str(MODELS_DIR / "freshtrack_model.pth"))
 ONNX_MODEL_PATH = os.getenv("ONNX_MODEL_PATH", str(MODELS_DIR / "mobilenetv2.onnx"))
+PRODUCE_MODEL_ONNX_PATH = os.getenv("PRODUCE_MODEL_ONNX_PATH", str(MODELS_DIR / "freshtrack_produce_v2.onnx"))
+PRODUCE_CLASSES_PATH = os.getenv("PRODUCE_CLASSES_PATH", str(MODELS_DIR / "produce_classes.json"))
 IMAGENET_CLASSES_PATH = os.getenv("IMAGENET_CLASSES_PATH", str(MODELS_DIR / "imagenet_classes.txt"))
 
 # Create directories if they do not exist
@@ -44,19 +46,24 @@ ALLOWED_ORIGINS = [
 # Supported Produce Classes
 SUPPORTED_PRODUCE = [
     "Apple",
+    "Avocado",
     "Banana",
-    "Orange",
-    "Tomato",
-    "Potato",
-    "Carrot",
     "Bell Pepper",
     "Broccoli",
-    "Strawberry",
+    "Carrot",
     "Cucumber",
-    "Onion",
-    "Lettuce",
-    "Avocado",
+    "Eggplant",
     "Lemon",
+    "Lettuce",
+    "Mango",
+    "Onion",
+    "Orange",
+    "Persimmon",
+    "Pomegranate",
+    "Potato",
+    "Strawberry",
+    "Tomato",
+    "Watermelon",
 ]
 
 # Freshness States

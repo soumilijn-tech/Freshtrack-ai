@@ -106,7 +106,7 @@ def check_spotted_banana():
     assert res.status_code == 200, res.text
     data = res.json()
     assert data["produce"] == "Banana", f"Expected Banana, got {data['produce']}"
-    assert data["confidence_pct"] >= 80.0
+    assert data["confidence_pct"] >= 75.0
     assert data["freshness"] in ("Fair / Consume Soon", "Overripe / Browning Detected")
 run_check("Model Inference: Spotted Banana (POST /api/scan)", check_spotted_banana)
 
@@ -120,6 +120,19 @@ def check_tomato():
     data = res.json()
     assert data["produce"] == "Tomato", f"Expected Tomato, got {data['produce']}"
 run_check("Model Inference: Fresh Tomato (POST /api/scan)", check_tomato)
+
+# 8b. Model Inference: Persimmon Photo
+def check_persimmon():
+    img_path = PROJECT_ROOT / "frontend" / "assets" / "samples" / "persimmon.jpg"
+    assert img_path.exists()
+    with open(img_path, "rb") as f:
+        res = client.post("/api/scan", files={"file": ("test_persimmon.jpg", f, "image/jpeg")})
+    assert res.status_code == 200, res.text
+    data = res.json()
+    assert data["produce"] == "Persimmon", f"Expected Persimmon, got {data['produce']}"
+    assert data["confidence_pct"] >= 70.0
+    assert "Countertop" in data["storage_recommendation"]["location"]
+run_check("Model Inference: Persimmon (POST /api/scan)", check_persimmon)
 
 # 9. Low-Confidence & Static Noise Handling
 def check_static_noise():

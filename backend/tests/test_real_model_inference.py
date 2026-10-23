@@ -12,11 +12,22 @@ from backend.app.config import SAMPLE_IMAGES_DIR
 
 def test_model_is_pretrained_onnx():
     """Verify that the real pretrained ONNX MobileNetV2 model is loaded, not demo mode."""
-    assert vision_service.mode == "pretrained_onnx_mobilenet"
+    assert vision_service.mode in ("produce_onnx_v2", "pretrained_onnx_mobilenet")
     assert vision_service.is_trained_model_active() is True
     assert "MobileNetV2" in vision_service.model_notice
     assert vision_service.input_shape == [1, 3, 224, 224]
-    assert vision_service.output_shape == [1, 1000]
+
+
+def test_persimmon_classified_correctly():
+    """Verify that Persimmon sample is recognized as Persimmon, distinguishing from Orange."""
+    persimmon_sample = SAMPLE_IMAGES_DIR / "persimmon.jpg"
+    assert persimmon_sample.exists(), "persimmon.jpg sample image must exist"
+    result = vision_service.predict(str(persimmon_sample))
+    assert result["produce"] == "Persimmon"
+    assert result["confidence_pct"] >= 70.0
+    assert "Countertop" in result["storage_recommendation"]["location"]
+    # Check that Orange is not the top prediction
+    assert result["top_produce_predictions"][0]["label"] == "Persimmon"
 
 
 def test_onnx_model_file_integrity():
@@ -60,7 +71,7 @@ def test_green_lemon_classified_as_lemon():
         # Must be Lemon, NOT Potato!
         assert result["produce"] == "Lemon"
         assert result["confidence_pct"] >= 60.0
-        assert result["mode"] == "pretrained_onnx_mobilenet"
+        assert result["mode"] in ("produce_onnx_v2", "pretrained_onnx_mobilenet")
         assert result["is_uncertain"] is False
     finally:
         if os.path.exists(tmp_path):
@@ -80,7 +91,7 @@ def test_low_confidence_triggers_warning_on_ambiguous_image():
         # Ambiguous noise should be marked uncertain or have low confidence
         assert result["is_uncertain"] is True or result["confidence_pct"] < 45.0
         assert result["warning_notice"] is not None
-        assert "warning" in result["warning_notice"].lower() or "ambiguity" in result["warning_notice"].lower()
+        assert "warning" in result["warning_notice"].lower() or "ambiguous" in result["warning_notice"].lower() or "ambiguity" in result["warning_notice"].lower()
     finally:
         if os.path.exists(img_path):
             os.remove(img_path)
