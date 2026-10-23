@@ -25,6 +25,8 @@ def get_system_status():
         "model_status": vision_service.model_status,
         "produce_model": vision_service.produce_model_name,
         "model_file": vision_service.model_file_display,
+        "input_shape": getattr(vision_service, "input_shape", None),
+        "output_shape": getattr(vision_service, "output_shape", None),
         "is_custom_model_loaded": vision_service.is_trained_model_active(),
         "freshness_assessment_method": "Surface Visual Discoloration Index (Heuristic)",
         "model_load_error": vision_service.model_load_error,

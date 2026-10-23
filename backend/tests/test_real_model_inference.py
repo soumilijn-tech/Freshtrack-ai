@@ -15,6 +15,16 @@ def test_model_is_pretrained_onnx():
     assert vision_service.mode == "pretrained_onnx_mobilenet"
     assert vision_service.is_trained_model_active() is True
     assert "MobileNetV2" in vision_service.model_notice
+    assert vision_service.input_shape == [1, 3, 224, 224]
+    assert vision_service.output_shape == [1, 1000]
+
+
+def test_onnx_model_file_integrity():
+    """Verify cryptographic SHA-256 integrity and file size of the active model."""
+    from backend.app.utils.download_model import verify_file_integrity
+    from backend.app.config import ONNX_MODEL_PATH
+    from pathlib import Path
+    assert verify_file_integrity(Path(ONNX_MODEL_PATH)) is True
 
 
 def test_model_unavailable_returns_safe_error():

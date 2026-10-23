@@ -47,8 +47,9 @@ try:
 except ImportError:
     TORCH_AVAILABLE = False
 
-# Public URL for downloading MobileNetV2 ONNX model if missing
-OFFICIAL_ONNX_MODEL_URL = "https://raw.githubusercontent.com/onnx/models/main/validated/vision/classification/mobilenet/model/mobilenetv2-7.onnx"
+# Public verified URLs for downloading MobileNetV2 ONNX model if missing
+OFFICIAL_ONNX_MODEL_URL = "https://media.githubusercontent.com/media/onnx/models/main/validated/vision/classification/mobilenet/model/mobilenetv2-7.onnx"
+OFFICIAL_ONNX_MODEL_MIRROR = "https://github.com/onnx/models/raw/main/validated/vision/classification/mobilenet/model/mobilenetv2-7.onnx"
 
 # Direct ImageNet-1000 synset mapping to FreshTrack produce categories
 IMAGENET_PRODUCE_MAP: Dict[int, str] = {
@@ -130,8 +131,8 @@ class VisionModelService:
 
         # 1. Attempt loading ONNX Model
         if ONNX_AVAILABLE:
-            if not onnx_file.exists():
-                print(f"[FreshTrack AI] ONNX model not found at {onnx_file}. Checking automatic download...")
+            if not onnx_file.exists() or onnx_file.stat().st_size < 1024 * 1024:
+                print(f"[FreshTrack AI] ONNX model missing or incomplete at {onnx_file.name}. Ensuring download...")
                 self._safe_download_onnx(onnx_file)
 
             if onnx_file.exists() and onnx_file.stat().st_size > 1024 * 1024:
@@ -148,14 +149,16 @@ class VisionModelService:
                         providers=["CPUExecutionProvider"]
                     )
                     self.onnx_input_name = self.onnx_session.get_inputs()[0].name
+                    self.input_shape = [int(dim) if isinstance(dim, int) else 1 for dim in self.onnx_session.get_inputs()[0].shape]
+                    self.output_shape = [int(dim) if isinstance(dim, int) else 1000 for dim in self.onnx_session.get_outputs()[0].shape]
                     self.model_status = "loaded"
                     self.mode = "pretrained_onnx_mobilenet"
                     self.produce_model_name = "MobileNetV2 (ONNX)"
                     self.model_file_display = "models/mobilenetv2.onnx"
                     self.model_load_error = None
                     self.model_notice = (
-                        "Active Model: MobileNetV2 (Pretrained ONNX neural network). "
-                        "Genuine open-source computer vision running on CPU (<30MB RAM)."
+                        f"Active Model: MobileNetV2 (Pretrained ONNX neural network). "
+                        f"Input: {self.input_shape}, Output: {self.output_shape}. Genuine computer vision running on CPU (<30MB RAM)."
                     )
                     print(f"[FreshTrack AI] {self.model_notice}")
                     return
@@ -205,19 +208,10 @@ class VisionModelService:
     def _safe_download_onnx(self, dest_path: Path):
         """Safely download MobileNetV2 ONNX weights if absent."""
         try:
-            dest_path.parent.mkdir(parents=True, exist_ok=True)
-            print(f"[FreshTrack AI] Downloading MobileNetV2 ONNX model (~14MB) to {dest_path}...")
-            req = urllib.request.Request(
-                OFFICIAL_ONNX_MODEL_URL,
-                headers={"User-Agent": "FreshTrackAI-App/1.0"}
-            )
-            with urllib.request.urlopen(req, timeout=30) as resp, open(dest_path, "wb") as out_file:
-                out_file.write(resp.read())
-            print(f"[FreshTrack AI] Successfully downloaded MobileNetV2 ONNX model.")
+            from backend.app.utils.download_model import ensure_model
+            ensure_model(dest_path.parent)
         except Exception as e:
             print(f"[FreshTrack AI] Note: Could not auto-download model weights ({e}).")
-            if dest_path.exists() and dest_path.stat().st_size < 1024:
-                dest_path.unlink()
 
     def is_trained_model_active(self) -> bool:
         """Return True only if a genuine neural network model is loaded and ready."""

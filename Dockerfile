@@ -34,7 +34,7 @@ COPY --chown=user:user .env.example /app/.env.example
 # Create runtime directories, pre-download ONNX weights during build, and set permissions
 RUN mkdir -p /app/data /app/uploads /app/backend/models && \
     curl -L -s -o /app/backend/models/mobilenetv2.onnx \
-    https://raw.githubusercontent.com/onnx/models/main/validated/vision/classification/mobilenet/model/mobilenetv2-7.onnx && \
+    https://media.githubusercontent.com/media/onnx/models/main/validated/vision/classification/mobilenet/model/mobilenetv2-7.onnx && \
     chown -R user:user /app
 
 # Switch to non-root user for Hugging Face security
